@@ -12,6 +12,7 @@ oauth2Client.setCredentials({
 
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
+async function findOrCreateFolder(name: string, parentId?: string): Promise<string> {
 async function findOrCreateFolder(name, parentId) {
   const query = parentId
     ? "name='" + name + "' and mimeType='application/vnd.google-apps.folder' and '" + parentId + "' in parents and trashed=false"
@@ -35,7 +36,7 @@ async function findOrCreateFolder(name, parentId) {
   return folder.data.id;
 }
 
-export async function POST(request) {
+export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const siteName = formData.get('siteName');
