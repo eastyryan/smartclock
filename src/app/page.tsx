@@ -397,40 +397,147 @@ function PhotoPage({ sites }: any) {
   );
 }
 
-function ActiveBoard({ activeClocks, managerAuth, setManagerAuth }: any) {
+function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any) {
+  const [selPeriodIdx, setSelPeriodIdx] = useState(0);
+
   if (!managerAuth) return <PinEntry title="Active Board" subtitle="Manager access required" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />;
+
+  const periods = (() => {
+    const result: Array<{ label: string; start: Date; end: Date }> = [];
+    const now = new Date();
+    let y = now.getFullYear(), m = now.getMonth(), isSecond = now.getDate() > 15;
+    for (let i = 0; i < 6; i++) {
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      const mName = new Date(y, m, 1).toLocaleString("en-US", { month: "short" });
+      if (isSecond) {
+        result.push({ label: mName + " 16–" + lastDay + ", " + y, start: new Date(y, m, 16), end: new Date(y, m, lastDay, 23, 59, 59) });
+        isSecond = false;
+      } else {
+        result.push({ label: mName + " 1–15, " + y, start: new Date(y, m, 1), end: new Date(y, m, 15, 23, 59, 59) });
+        if (m === 0) { m = 11; y -= 1; } else { m -= 1; }
+        isSecond = true;
+      }
+    }
+    return result;
+  })();
+
+  const period = periods[selPeriodIdx] || periods[0];
+  const today = new Date().toISOString().split("T")[0];
+
+  const periodEntries = history.filter((h: any) => { const d = new Date(h.clockIn); return d >= period.start && d <= period.end; });
+  const shiftsToday = history.filter((h: any) => h.clockIn.startsWith(today)).length + activeClocks.filter((c: any) => c.clockIn.startsWith(today)).length;
+  const periodHrs = periodEntries.filter((h: any) => h.status !== "rejected").reduce((s: number, h: any) => s + h.hours, 0);
+  const pendingCount = periodEntries.filter((h: any) => h.status === "pending").length;
+
+  const activeMap: Record<string, any> = {};
+  activeClocks.forEach((c: any) => { activeMap[c.employee] = c; });
+
+  const recentCards = [...history].reverse().slice(0, 10);
+  const DARK_GREEN = "#1a3620";
+  const ACCENT = "#22c55e";
+
   return (
     <div style={{ width: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap" as const, gap: 10 }}>
-        <div>
-          <h2 style={{ color: "#1e293b", margin: 0, fontSize: 24, fontWeight: 800 }}>Active Employees</h2>
-          <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: 14 }}>Real-time workforce overview</p>
+      {/* Pay period bar */}
+      <div style={{ ...S.card, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" as const, gap: 12, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: 1 }}>PAY PERIOD</span>
+          <select value={selPeriodIdx} onChange={(e) => setSelPeriodIdx(Number(e.target.value))}
+            style={{ padding: "7px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, color: "#1e293b", background: "#f8fafc", fontWeight: 500 }}>
+            {periods.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
+          </select>
         </div>
-        <Badge color="#16a34a">{activeClocks.length} ACTIVE</Badge>
-      </div>
-      {activeClocks.length === 0 ? (
-        <div style={{ ...S.card, textAlign: "center" as const, padding: 60 }}>
-          <h3 style={{ color: "#94a3b8", fontWeight: 500 }}>No employees currently clocked in</h3>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-          {activeClocks.map((c: any, i: number) => (
-            <div key={i} style={{ ...S.card, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                <div style={{ width: 42, height: 42, borderRadius: "50%", background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 16, flexShrink: 0 }}>{c.employee[0]}</div>
-                <div>
-                  <p style={{ color: "#1e293b", margin: 0, fontWeight: 700 }}>{c.employee}</p>
-                  <p style={{ color: "#64748b", margin: "3px 0 0", fontSize: 13 }}>{c.site}</p>
-                  <p style={{ color: "#94a3b8", margin: "2px 0 0", fontSize: 12 }}>Manager: {c.manager}</p>
-                </div>
-              </div>
-              <div style={{ textAlign: "right" as const }}>
-                <p style={{ color: "#1e293b", margin: 0, fontWeight: 700, fontSize: 15 }}>{formatTime(c.clockIn)}</p>
-                <Badge color="#16a34a">WORKING</Badge>
-              </div>
+        <div style={{ display: "flex", gap: 20 }}>
+          {[
+            { val: periodEntries.length, label: "CARDS", color: "#1e293b" },
+            { val: periodHrs.toFixed(1) + "h", label: "HOURS", color: ACCENT },
+            { val: pendingCount, label: "PENDING", color: "#1e293b" },
+          ].map((s, i) => (
+            <div key={i} style={{ textAlign: "center" as const }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.val}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: 1 }}>{s.label}</div>
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Title */}
+      <h2 style={{ color: DARK_GREEN, margin: "0 0 16px", fontSize: 22, fontWeight: 800 }}>Active Board</h2>
+
+      {/* Stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 20 }}>
+        {[
+          { val: activeClocks.length, label: "ON SITE NOW", color: "#1e293b" },
+          { val: shiftsToday, label: "SHIFTS TODAY", color: "#1e293b" },
+          { val: periodHrs.toFixed(1) + "h", label: "PERIOD HRS", color: ACCENT },
+        ].map((s, i) => (
+          <div key={i} style={{ ...S.card, textAlign: "center" as const, padding: "18px 12px" }}>
+            <div style={{ fontSize: 30, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.val}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: 0.8, marginTop: 5, textTransform: "uppercase" as const }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Employee grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 10, marginBottom: 28 }}>
+        {EMPLOYEES.map((emp) => {
+          const active = activeMap[emp.name];
+          return (
+            <div key={emp.name} style={{
+              background: active ? DARK_GREEN : "#fff",
+              borderRadius: 12,
+              border: active ? "none" : "1px solid #e5e7eb",
+              padding: "14px 14px 12px",
+              position: "relative" as const,
+              boxShadow: active ? "0 2px 8px rgba(26,54,32,0.2)" : "0 1px 3px rgba(0,0,0,0.04)",
+              minHeight: 80,
+              display: "flex", flexDirection: "column" as const, justifyContent: "space-between",
+            }}>
+              <div style={{ position: "absolute" as const, top: 12, right: 12, width: 10, height: 10, borderRadius: "50%", background: active ? ACCENT : "#d1d5db", boxShadow: active ? "0 0 6px " + ACCENT : "none" }} />
+              <div>
+                <p style={{ color: active ? "#fff" : "#1e293b", margin: "0 0 2px", fontWeight: 700, fontSize: 13, paddingRight: 16 }}>{emp.name}</p>
+                <p style={{ color: active ? "#86efac" : "#94a3b8", margin: 0, fontSize: 11, fontWeight: 600 }}>
+                  {active ? "SINCE " + formatTime(active.clockIn) : "NOT CLOCKED IN"}
+                </p>
+              </div>
+              {active && <p style={{ color: "#86efac", margin: "8px 0 0", fontSize: 11 }}>📍 {active.site}</p>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Recent Cards */}
+      {recentCards.length > 0 && (
+        <>
+          <h3 style={{ color: "#1e293b", margin: "0 0 12px", fontSize: 18, fontWeight: 700 }}>Recent Cards</h3>
+          <div style={{ display: "flex", flexDirection: "column" as const, gap: 8 }}>
+            {recentCards.map((h: any, i: number) => {
+              const sc = ({ pending: "#16a34a", approved: "#16a34a", rejected: "#dc2626", edited: "#7c3aed" } as any)[h.status] || "#94a3b8";
+              return (
+                <div key={i} style={{ ...S.card, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ color: "#1e293b", margin: "0 0 3px", fontWeight: 700, fontSize: 15 }}>{h.employee}</p>
+                      <p style={{ color: "#64748b", margin: "0 0 8px", fontSize: 12 }}>{formatDate(h.clockIn)} · {formatTime(h.clockIn)}–{formatTime(h.clockOut)}</p>
+                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" as const }}>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>🕐 30min</span>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>📍 {h.site}</span>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>👤 {h.manager}</span>
+                        {h.status === "pending" && <span style={{ fontSize: 12 }}>⚠️</span>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" as const, flexShrink: 0 }}>
+                      <p style={{ color: "#1e293b", margin: "0 0 6px", fontWeight: 800, fontSize: 18 }}>{h.hours}h</p>
+                      <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, background: sc + "18", color: sc, fontSize: 11, fontWeight: 700 }}>
+                        {h.status.charAt(0).toUpperCase() + h.status.slice(1)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
@@ -635,7 +742,7 @@ export default function App() {
       <div style={{ padding: "24px 24px 40px", width: "100%", boxSizing: "border-box" as const }}>
         {page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} setActiveClocks={setActiveClocks} history={history} setHistory={setHistory} />}
         {page === 1 && <PhotoPage sites={sites} />}
-        {page === 2 && <ActiveBoard activeClocks={activeClocks} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {page === 2 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
         {page === 3 && <PayPeriod history={history} setHistory={setHistory} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
         {page === 4 && <JobSites sites={sites} setSites={setSites} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
       </div>
