@@ -66,14 +66,50 @@ function getPayPeriod(date: Date) {
 }
 function getCurrentPayPeriod() { return getPayPeriod(new Date()); }
 
+async function compressImage(file: File, maxDim = 1920, quality = 0.85): Promise<File> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(file); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) { resolve(file); return; }
+        resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 async function uploadToGoogleDrive(files: any[], siteName: string, employeeName: string) {
   const formData = new FormData();
   formData.append('siteName', siteName);
   formData.append('employeeName', employeeName);
   files.forEach((f: any) => formData.append('files', f.file));
-  const res = await fetch('/api/upload', { method: 'POST', body: formData });
-  const data = await res.json();
-  return data;
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    if (!res.ok) {
+      let detail = '';
+      try { const j = await res.json(); detail = j.error || ''; } catch { detail = await res.text().catch(() => ''); }
+      return { error: 'Upload failed (' + res.status + ')' + (detail ? ': ' + detail.slice(0, 200) : '') };
+    }
+    return await res.json();
+  } catch (e: any) {
+    return { error: 'Network error: ' + (e?.message || 'unknown') };
+  }
 }
 
 const S = {
@@ -336,8 +372,15 @@ function PhotoPage({ sites }: any) {
   const upload = async () => {
     const s = sites.find((x: any) => x.id === Number(site));
     setUploading(true);
-    const res = await uploadToGoogleDrive(photos, s.name, emp.name);
-    setUploading(false); setResult(res);
+    try {
+      const compressed = await Promise.all(photos.map(async (p: any) => ({ ...p, file: await compressImage(p.file) })));
+      const res = await uploadToGoogleDrive(compressed, s.name, emp.name);
+      setResult(res);
+    } catch (e: any) {
+      setResult({ error: e?.message || "Could not process photos" });
+    } finally {
+      setUploading(false);
+    }
   };
 
   if (!emp) return <PinEntry title="Photo Upload" subtitle="Verify to upload job site photos" onVerify={setEmp} employees={EMPLOYEES} />;
@@ -345,10 +388,20 @@ function PhotoPage({ sites }: any) {
   if (result) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
       <div style={{ ...S.card, textAlign: "center" as const, maxWidth: 420, width: "100%", padding: 32 }}>
-        <h3 style={{ color: "#1e293b", margin: "0 0 8px" }}>{result.count} photo(s) uploaded</h3>
-        <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 4px" }}>Saved to Google Drive:</p>
-        <p style={{ color: "#475569", fontSize: 13, fontFamily: "monospace", background: "#f1f5f9", padding: "8px 12px", borderRadius: 8, margin: "8px 0 20px" }}>{result.folder}/</p>
-        <Btn onClick={() => { setEmp(null); setPhotos([]); setResult(null); setSite(""); }}>Done</Btn>
+        {result.error ? (
+          <>
+            <h3 style={{ color: "#dc2626", margin: "0 0 8px" }}>Upload failed</h3>
+            <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 20px", wordBreak: "break-word" as const }}>{result.error}</p>
+            <Btn onClick={() => setResult(null)}>Try Again</Btn>
+          </>
+        ) : (
+          <>
+            <h3 style={{ color: "#1e293b", margin: "0 0 8px" }}>{result.count} photo(s) uploaded</h3>
+            <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 4px" }}>Saved to Google Drive:</p>
+            <p style={{ color: "#475569", fontSize: 13, fontFamily: "monospace", background: "#f1f5f9", padding: "8px 12px", borderRadius: 8, margin: "8px 0 20px" }}>{result.folder}/</p>
+            <Btn onClick={() => { setEmp(null); setPhotos([]); setResult(null); setSite(""); }}>Done</Btn>
+          </>
+        )}
       </div>
     </div>
   );
