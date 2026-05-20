@@ -367,7 +367,7 @@ function PhotoPage({ sites }: any) {
             onClick={() => fileRef.current?.click()}>
             <p style={{ color: "#64748b", margin: 0, fontSize: 14, fontWeight: 500 }}>Tap to take a photo or select from gallery</p>
             <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: 12 }}>All formats accepted (HEIC, JPG, PNG, WebP)</p>
-            <input ref={fileRef} type="file" accept="image/*,.heic,.heif" capture="environment" multiple hidden onChange={(e: any) => handleFiles(e.target.files)} />
+            <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple hidden onChange={(e: any) => handleFiles(e.target.files)} />
           </div>
           {photos.length > 0 && (
             <>

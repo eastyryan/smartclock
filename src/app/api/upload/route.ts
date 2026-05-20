@@ -12,13 +12,19 @@ oauth2Client.setCredentials({
 
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
-async function findOrCreateFolder(name: string, parentId?: string): Promise<string> {
-  const escaped = name.replace(/'/g, "\\'");
-  const query = parentId
-    ? "name='" + escaped + "' and mimeType='application/vnd.google-apps.folder' and '" + parentId + "' in parents and trashed=false"
-    : "name='" + escaped + "' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false";
+const ROOT_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '1Ti1J4j3ltPWFO9pZGqaSsorcs_44rpO9';
 
-  const res = await drive.files.list({ q: query, fields: 'files(id,name)', spaces: 'drive' });
+async function findOrCreateFolder(name: string, parentId: string): Promise<string> {
+  const escaped = name.replace(/'/g, "\\'");
+  const query = "name='" + escaped + "' and mimeType='application/vnd.google-apps.folder' and '" + parentId + "' in parents and trashed=false";
+
+  const res = await drive.files.list({
+    q: query,
+    fields: 'files(id,name)',
+    spaces: 'drive',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
 
   if (res.data.files && res.data.files.length > 0 && res.data.files[0].id) {
     return res.data.files[0].id;
@@ -28,9 +34,10 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
     requestBody: {
       name,
       mimeType: 'application/vnd.google-apps.folder',
-      parents: parentId ? [parentId] : [],
+      parents: [parentId],
     },
     fields: 'id',
+    supportsAllDrives: true,
   });
 
   if (!folder.data.id) {
@@ -51,8 +58,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const masterFolderId = await findOrCreateFolder('Dean Ryan App Photos');
-    const siteFolderId = await findOrCreateFolder(siteName, masterFolderId);
+    const siteFolderId = await findOrCreateFolder(siteName, ROOT_FOLDER_ID);
 
     const today = new Date().toISOString().split('T')[0];
     const uploadedFiles: Array<{ id: string | null | undefined; name: string | null | undefined; link: string | null | undefined }> = [];
@@ -73,6 +79,7 @@ export async function POST(request: Request) {
           body: Readable.from(buffer),
         },
         fields: 'id,name,webViewLink',
+        supportsAllDrives: true,
       });
 
       uploadedFiles.push({
@@ -84,7 +91,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      folder: 'Dean Ryan App Photos/' + siteName,
+      folder: siteName,
       files: uploadedFiles,
       count: uploadedFiles.length,
     });
