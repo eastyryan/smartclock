@@ -152,7 +152,7 @@ function PinPad({ value, onChange }: { value: string; onChange: (v: string) => v
             fontSize: 22, fontWeight: 800, color: value[i] ? "#fff" : "#cbd5e1",
             transition: "all 0.15s"
           }}>
-            {value[i] ? "\u2022" : ""}
+            {value[i] ? "•" : ""}
           </div>
         ))}
       </div>
@@ -168,7 +168,7 @@ function PinPad({ value, onChange }: { value: string; onChange: (v: string) => v
               visibility: k ? "visible" : "hidden",
               userSelect: "none"
             }}>
-            {k === "del" ? "\u232B" : k}
+            {k === "del" ? "⌫" : k}
           </button>
         ))}
       </div>
@@ -201,7 +201,7 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
       <div style={{ ...S.card, maxWidth: 400, width: "100%", textAlign: "center" as const, padding: "28px 24px 24px" }}>
         <div style={{ width: 56, height: 56, borderRadius: "50%", background: type === "manager" ? "linear-gradient(135deg, #f59e0b, #d97706)" : "linear-gradient(135deg, #dc2626, #b91c1c)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 24 }}>
-          {type === "manager" ? "\uD83D\uDD12" : "\uD83D\uDC64"}
+          {type === "manager" ? "🔒" : "👤"}
         </div>
         <h2 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20 }}>{title}</h2>
         <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 20 }}>{subtitle || (type === "manager" ? "Enter manager PIN" : "Select your name, then enter your PIN")}</p>
@@ -609,11 +609,8 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: "#f5f6fa", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
       <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ background: "#111", borderRadius: 10, padding: "8px 12px" }}>
-            <span style={{ color: "#fff", fontFamily: "cursive", fontSize: 18, fontWeight: 700 }}>D</span>
-            <span style={{ color: "#dc2626", fontSize: 14 }}> R </span>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <img src="/logo.png" alt="Dean Ryans Landscape / Property Maintenance" style={{ height: 48, width: "auto", display: "block" }} />
           <div>
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#1e293b" }}>Dean Ryans</h1>
             <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", letterSpacing: 1.5, fontWeight: 600 }}>LANDSCAPE / PROPERTY MAINTENANCE</p>

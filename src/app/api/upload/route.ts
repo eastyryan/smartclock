@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { Readable } from 'stream';
 
 const oauth2Client = new google.auth.OAuth2(
@@ -13,14 +13,14 @@ oauth2Client.setCredentials({
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
 async function findOrCreateFolder(name: string, parentId?: string): Promise<string> {
-async function findOrCreateFolder(name, parentId) {
+  const escaped = name.replace(/'/g, "\\'");
   const query = parentId
-    ? "name='" + name + "' and mimeType='application/vnd.google-apps.folder' and '" + parentId + "' in parents and trashed=false"
-    : "name='" + name + "' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false";
+    ? "name='" + escaped + "' and mimeType='application/vnd.google-apps.folder' and '" + parentId + "' in parents and trashed=false"
+    : "name='" + escaped + "' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false";
 
   const res = await drive.files.list({ q: query, fields: 'files(id,name)', spaces: 'drive' });
 
-  if (res.data.files && res.data.files.length > 0) {
+  if (res.data.files && res.data.files.length > 0 && res.data.files[0].id) {
     return res.data.files[0].id;
   }
 
@@ -33,6 +33,10 @@ async function findOrCreateFolder(name, parentId) {
     fields: 'id',
   });
 
+  if (!folder.data.id) {
+    throw new Error('Failed to create folder: ' + name);
+  }
+
   return folder.data.id;
 }
 
@@ -41,9 +45,9 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const siteName = formData.get('siteName');
     const employeeName = formData.get('employeeName');
-    const files = formData.getAll('files');
+    const files = formData.getAll('files').filter((f): f is File => f instanceof File);
 
-    if (!siteName || !employeeName || files.length === 0) {
+    if (typeof siteName !== 'string' || typeof employeeName !== 'string' || files.length === 0) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -51,7 +55,7 @@ export async function POST(request: Request) {
     const siteFolderId = await findOrCreateFolder(siteName, masterFolderId);
 
     const today = new Date().toISOString().split('T')[0];
-    const uploadedFiles = [];
+    const uploadedFiles: Array<{ id: string | null | undefined; name: string | null | undefined; link: string | null | undefined }> = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -86,6 +90,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Upload error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
