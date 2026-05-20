@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { supabase } from '../lib/supabase';
 
 const EMPLOYEES = [
   { name: "Adrian", pin: "3847" },
@@ -41,6 +42,22 @@ const INITIAL_SITES = [
 ];
 
 const FENCE_RADIUS = 359;
+
+function mapRow(row: any) {
+  return {
+    id: row.id,
+    employee: row.employee_name,
+    site: row.site_name,
+    siteId: row.site_id,
+    manager: row.manager_name,
+    clockIn: row.clock_in,
+    clockOut: row.clock_out,
+    hours: row.hours,
+    status: row.status,
+    lat: row.lat,
+    lng: row.lng,
+  };
+}
 
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371000, p = Math.PI / 180;
@@ -255,7 +272,7 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
   );
 }
 
-function ClockPage({ sites, activeClocks, setActiveClocks, history, setHistory }: any) {
+function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any) {
   const [emp, setEmp] = useState<any>(null);
   const [site, setSite] = useState("");
   const [manager, setManager] = useState("");
@@ -277,20 +294,19 @@ function ClockPage({ sites, activeClocks, setActiveClocks, history, setHistory }
     );
   }, [sites]);
 
-  const clockIn = () => {
+  const clockIn = async () => {
     setLoading(true);
-    const now = new Date().toISOString(), s = sites.find((x: any) => x.id === Number(site));
-    setActiveClocks((p: any[]) => [...p, { employee: emp.name, site: s.name, siteId: s.id, manager, clockIn: now, lat: s.lat, lng: s.lng }]);
+    const s = sites.find((x: any) => x.id === Number(site));
+    await onClockIn(emp.name, s, manager);
     setMsg({ type: "success", text: emp.name + " clocked in at " + s.name });
     setTimeout(() => { setLoading(false); setEmp(null); setSite(""); setManager(""); setGeoStatus(null); setMsg(null); }, 2500);
   };
 
-  const clockOut = () => {
+  const clockOut = async () => {
     setLoading(true);
-    const now = new Date().toISOString(), active = activeClocks.find((c: any) => c.employee === emp.name);
-    const hrs = calcHours(active.clockIn, now);
-    setHistory((p: any[]) => [...p, { ...active, clockOut: now, hours: hrs, status: "pending" }]);
-    setActiveClocks((p: any[]) => p.filter((c: any) => c.employee !== emp.name));
+    const active = activeClocks.find((c: any) => c.employee === emp.name);
+    const hrs = calcHours(active.clockIn, new Date().toISOString());
+    await onClockOut(emp.name);
     setMsg({ type: "success", text: emp.name + " clocked out - " + hrs + "h (30min lunch deducted)" });
     setTimeout(() => { setLoading(false); setEmp(null); setMsg(null); }, 2500);
   };
@@ -596,8 +612,8 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
   );
 }
 
-function PayPeriod({ history, setHistory, managerAuth, setManagerAuth }: any) {
-  const [editIdx, setEditIdx] = useState<number | null>(null);
+function PayPeriod({ history, onApprove, onReject, onEditHours, managerAuth, setManagerAuth }: any) {
+  const [editIdx, setEditIdx] = useState<string | null>(null);
   const [editHrs, setEditHrs] = useState("");
   const [selPeriod, setSelPeriod] = useState("current");
 
@@ -605,9 +621,9 @@ function PayPeriod({ history, setHistory, managerAuth, setManagerAuth }: any) {
 
   const currentPP = getCurrentPayPeriod();
   const filtered = selPeriod === "all" ? history : history.filter((h: any) => { const d = new Date(h.clockIn); return d >= currentPP.start && d <= currentPP.end; });
-  const approve = (i: number) => setHistory((p: any[]) => p.map((h: any, j: number) => j === i ? { ...h, status: "approved" } : h));
-  const reject = (i: number) => setHistory((p: any[]) => p.map((h: any, j: number) => j === i ? { ...h, status: "rejected" } : h));
-  const saveEdit = (i: number) => { setHistory((p: any[]) => p.map((h: any, j: number) => j === i ? { ...h, hours: parseFloat(editHrs), status: "edited" } : h)); setEditIdx(null); };
+  const approve = (id: string) => onApprove(id);
+  const reject = (id: string) => onReject(id);
+  const saveEdit = (id: string) => { onEditHours(id, parseFloat(editHrs)); setEditIdx(null); };
   const exportCSV = () => {
     let csv = "Employee,Site,Manager,Clock In,Clock Out,Hours,Status\n";
     filtered.forEach((h: any) => { csv += '"' + h.employee + '","' + h.site + '","' + h.manager + '","' + formatDate(h.clockIn) + " " + formatTime(h.clockIn) + '","' + formatDate(h.clockOut) + " " + formatTime(h.clockOut) + '",' + h.hours + ',"' + h.status + '"\n'; });
@@ -651,9 +667,8 @@ function PayPeriod({ history, setHistory, managerAuth, setManagerAuth }: any) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column" as const, gap: 8 }}>
           {filtered.map((h: any, i: number) => {
-            const ri = history.indexOf(h);
             return (
-              <div key={i} style={{ ...S.card, padding: 16 }}>
+              <div key={h.id || i} style={{ ...S.card, padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" as const, gap: 10 }}>
                   <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flex: 1, minWidth: 200 }}>
                     <div style={{ width: 40, height: 40, borderRadius: "50%", background: (statusColor[h.status] || "#94a3b8") + "18", display: "flex", alignItems: "center", justifyContent: "center", color: statusColor[h.status] || "#94a3b8", fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{h.employee[0]}</div>
@@ -664,10 +679,10 @@ function PayPeriod({ history, setHistory, managerAuth, setManagerAuth }: any) {
                     </div>
                   </div>
                   <div style={{ textAlign: "right" as const }}>
-                    {editIdx === ri ? (
+                    {editIdx === h.id ? (
                       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                         <input value={editHrs} onChange={(e) => setEditHrs(e.target.value)} type="number" step="0.25" style={{ width: 70, padding: "6px 10px", background: "#f8fafc", border: "1px solid #d1d5db", borderRadius: 8, color: "#1e293b", fontSize: 15, fontWeight: 700 }} />
-                        <button onClick={() => saveEdit(ri)} style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Save</button>
+                        <button onClick={() => saveEdit(h.id)} style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Save</button>
                         <button onClick={() => setEditIdx(null)} style={{ background: "#f1f5f9", color: "#64748b", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
                       </div>
                     ) : (
@@ -676,11 +691,11 @@ function PayPeriod({ history, setHistory, managerAuth, setManagerAuth }: any) {
                     <Badge color={statusColor[h.status] || "#94a3b8"}>{h.status.toUpperCase()}</Badge>
                   </div>
                 </div>
-                {h.status === "pending" && editIdx !== ri && (
+                {h.status === "pending" && editIdx !== h.id && (
                   <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
-                    <button onClick={() => approve(ri)} style={{ flex: 1, padding: "8px 0", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, color: "#15803d", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Approve</button>
-                    <button onClick={() => reject(ri)} style={{ flex: 1, padding: "8px 0", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Reject</button>
-                    <button onClick={() => { setEditIdx(ri); setEditHrs(String(h.hours)); }} style={{ flex: 1, padding: "8px 0", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, color: "#7c3aed", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Edit</button>
+                    <button onClick={() => approve(h.id)} style={{ flex: 1, padding: "8px 0", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, color: "#15803d", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Approve</button>
+                    <button onClick={() => reject(h.id)} style={{ flex: 1, padding: "8px 0", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Reject</button>
+                    <button onClick={() => { setEditIdx(h.id); setEditHrs(String(h.hours)); }} style={{ flex: 1, padding: "8px 0", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, color: "#7c3aed", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Edit</button>
                   </div>
                 )}
               </div>
@@ -692,7 +707,7 @@ function PayPeriod({ history, setHistory, managerAuth, setManagerAuth }: any) {
   );
 }
 
-function JobSites({ sites, setSites, managerAuth, setManagerAuth }: any) {
+function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, setManagerAuth }: any) {
   const [showAdd, setShowAdd] = useState(false);
   const [nf, setNf] = useState({ name: "", address: "", lat: "", lng: "" });
 
@@ -700,11 +715,11 @@ function JobSites({ sites, setSites, managerAuth, setManagerAuth }: any) {
 
   const addSite = () => {
     if (!nf.name || !nf.address || !nf.lat || !nf.lng) return;
-    setSites((p: any[]) => [...p, { id: Date.now(), name: nf.name, address: nf.address, lat: parseFloat(nf.lat), lng: parseFloat(nf.lng), active: true }]);
+    onAddSite({ name: nf.name, address: nf.address, lat: parseFloat(nf.lat), lng: parseFloat(nf.lng), active: true });
     setNf({ name: "", address: "", lat: "", lng: "" }); setShowAdd(false);
   };
-  const toggle = (id: number) => setSites((p: any[]) => p.map((s: any) => s.id === id ? { ...s, active: !s.active } : s));
-  const remove = (id: number) => setSites((p: any[]) => p.filter((s: any) => s.id !== id));
+  const toggle = (id: number) => onToggleSite(id);
+  const remove = (id: number) => onRemoveSite(id);
 
   return (
     <div style={{ width: "100%" }}>
@@ -751,10 +766,128 @@ function JobSites({ sites, setSites, managerAuth, setManagerAuth }: any) {
 
 export default function App() {
   const [page, setPage] = useState(0);
-  const [sites, setSites] = useState(INITIAL_SITES);
+  const [sites, setSites] = useState<any[]>([]);
   const [activeClocks, setActiveClocks] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [managerAuth, setManagerAuth] = useState(false);
+  const [dbLoading, setDbLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    const [activeRes, completedRes, sitesRes] = await Promise.all([
+      supabase.from('clock_events').select('*').is('clock_out', null),
+      supabase.from('clock_events').select('*').not('clock_out', 'is', null).order('clock_in', { ascending: false }),
+      supabase.from('job_sites').select('*').order('id', { ascending: true }),
+    ]);
+
+    if (activeRes.data) {
+      setActiveClocks(activeRes.data.map(mapRow));
+    }
+    if (completedRes.data) {
+      setHistory(completedRes.data.map(mapRow));
+    }
+    if (sitesRes.data) {
+      if (sitesRes.data.length === 0) {
+        await supabase.from('job_sites').insert(INITIAL_SITES);
+        setSites(INITIAL_SITES);
+      } else {
+        setSites(sitesRes.data);
+      }
+    }
+    setDbLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadData();
+
+    const channel = supabase
+      .channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clock_events' }, loadData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_sites' }, loadData)
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [loadData]);
+
+  useEffect(() => { if (page < 2) setManagerAuth(false); }, [page]);
+
+  const onClockIn = async (empName: string, site: any, manager: string) => {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase.from('clock_events').insert({
+      employee_name: empName,
+      site_name: site.name,
+      site_id: site.id,
+      manager_name: manager,
+      clock_in: now,
+      lat: site.lat,
+      lng: site.lng,
+    }).select().single();
+
+    if (!error && data) {
+      setActiveClocks((p) => [...p, mapRow(data)]);
+    }
+  };
+
+  const onClockOut = async (employeeName: string) => {
+    const active = activeClocks.find((c) => c.employee === employeeName);
+    if (!active) return;
+    const now = new Date().toISOString();
+    const hrs = calcHours(active.clockIn, now);
+    const { error } = await supabase.from('clock_events').update({
+      clock_out: now,
+      hours: hrs,
+      status: 'pending',
+    }).eq('id', active.id);
+
+    if (!error) {
+      const completed = { ...active, clockOut: now, hours: hrs, status: 'pending' };
+      setActiveClocks((p) => p.filter((c) => c.employee !== employeeName));
+      setHistory((p) => [completed, ...p]);
+    }
+  };
+
+  const onApprove = async (id: string) => {
+    const { error } = await supabase.from('clock_events').update({ status: 'approved' }).eq('id', id);
+    if (!error) {
+      setHistory((p) => p.map((h) => h.id === id ? { ...h, status: 'approved' } : h));
+    }
+  };
+
+  const onReject = async (id: string) => {
+    const { error } = await supabase.from('clock_events').update({ status: 'rejected' }).eq('id', id);
+    if (!error) {
+      setHistory((p) => p.map((h) => h.id === id ? { ...h, status: 'rejected' } : h));
+    }
+  };
+
+  const onEditHours = async (id: string, hrs: number) => {
+    const { error } = await supabase.from('clock_events').update({ hours: hrs, status: 'edited' }).eq('id', id);
+    if (!error) {
+      setHistory((p) => p.map((h) => h.id === id ? { ...h, hours: hrs, status: 'edited' } : h));
+    }
+  };
+
+  const onAddSite = async (siteData: any) => {
+    const { data, error } = await supabase.from('job_sites').insert(siteData).select().single();
+    if (!error && data) {
+      setSites((p) => [...p, data]);
+    }
+  };
+
+  const onToggleSite = async (id: number) => {
+    const site = sites.find((s) => s.id === id);
+    if (!site) return;
+    const { error } = await supabase.from('job_sites').update({ active: !site.active }).eq('id', id);
+    if (!error) {
+      setSites((p) => p.map((s) => s.id === id ? { ...s, active: !s.active } : s));
+    }
+  };
+
+  const onRemoveSite = async (id: number) => {
+    const { error } = await supabase.from('job_sites').delete().eq('id', id);
+    if (!error) {
+      setSites((p) => p.filter((s) => s.id !== id));
+    }
+  };
 
   const tabs = [
     { icon: "Clock", label: "Clock In/Out", mgr: false },
@@ -764,7 +897,13 @@ export default function App() {
     { icon: "Pin", label: "Job Sites", mgr: true },
   ];
 
-  useEffect(() => { if (page < 2) setManagerAuth(false); }, [page]);
+  if (dbLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f6fa" }}>
+        <p style={{ color: "#94a3b8", fontSize: 16 }}>Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f6fa", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
@@ -793,11 +932,11 @@ export default function App() {
         ))}
       </div>
       <div style={{ padding: "24px 24px 40px", width: "100%", boxSizing: "border-box" as const }}>
-        {page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} setActiveClocks={setActiveClocks} history={history} setHistory={setHistory} />}
+        {page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} onClockIn={onClockIn} onClockOut={onClockOut} history={history} />}
         {page === 1 && <PhotoPage sites={sites} />}
         {page === 2 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {page === 3 && <PayPeriod history={history} setHistory={setHistory} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {page === 4 && <JobSites sites={sites} setSites={setSites} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {page === 3 && <PayPeriod history={history} onApprove={onApprove} onReject={onReject} onEditHours={onEditHours} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {page === 4 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
       </div>
     </div>
   );
