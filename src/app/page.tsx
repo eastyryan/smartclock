@@ -284,8 +284,10 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
   const [geoStatus, setGeoStatus] = useState<string | null>(null);
   const [msg, setMsg] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const activeSites = sites.filter((s: any) => s.active);
   const isClockedIn = emp && activeClocks.find((c: any) => c.employee === emp.name);
+  const myHistory = emp ? history.filter((h: any) => h.employee === emp.name).slice().sort((a: any, b: any) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime()) : [];
 
   const checkGeo = useCallback((siteId: string) => {
     if (!siteId) return;
@@ -317,6 +319,62 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
   };
 
   if (!emp) return <PinEntry title="Clock In / Out" subtitle="Verify your identity to start" onVerify={setEmp} employees={EMPLOYEES} />;
+
+  if (showHistory) {
+    const statusColor: any = { pending: "#f59e0b", approved: "#16a34a", rejected: "#dc2626", edited: "#7c3aed" };
+    const totalHrs = myHistory.filter((h: any) => h.status !== "rejected").reduce((s: number, h: any) => s + (Number(h.hours) || 0), 0);
+    return (
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", minHeight: "60vh" }}>
+        <div style={{ maxWidth: 540, width: "100%" }}>
+          <div style={{ ...S.card, marginBottom: 16, display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 48, height: 48, borderRadius: "50%", background: "linear-gradient(135deg, #dc2626, #b91c1c)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{emp.name[0]}</div>
+            <div style={{ flex: 1 }}>
+              <p style={{ color: "#1e293b", margin: 0, fontWeight: 700, fontSize: 17 }}>{emp.name}</p>
+              <p style={{ color: "#94a3b8", margin: 0, fontSize: 13 }}>{myHistory.length} time card(s) · {totalHrs.toFixed(1)}h total</p>
+            </div>
+          </div>
+          {myHistory.length === 0 ? (
+            <div style={{ ...S.card, textAlign: "center" as const, padding: 40 }}>
+              <p style={{ color: "#94a3b8", margin: 0 }}>You don&apos;t have any time cards yet.</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" as const, gap: 10 }}>
+              {myHistory.map((h: any) => {
+                const sc = statusColor[h.status] || "#94a3b8";
+                return (
+                  <div key={h.id} style={{ ...S.card, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div>
+                        <p style={{ color: "#1e293b", margin: 0, fontWeight: 700, fontSize: 15 }}>{formatDate(h.clockIn)}</p>
+                        <p style={{ color: "#64748b", margin: "2px 0 0", fontSize: 12 }}>{formatTime(h.clockIn)} – {h.clockOut ? formatTime(h.clockOut) : "—"}</p>
+                      </div>
+                      <div style={{ textAlign: "right" as const }}>
+                        <p style={{ color: "#1e293b", margin: 0, fontWeight: 800, fontSize: 18 }}>{h.hours}h</p>
+                        <Badge color={sc}>{(h.status || "").charAt(0).toUpperCase() + (h.status || "").slice(1)}</Badge>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap" as const }}>
+                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>📍 {h.site}</span>
+                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>👤 {h.manager}</span>
+                    </div>
+                    {h.notes && (
+                      <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        <span style={{ fontSize: 14 }}>✏️</span>
+                        <p style={{ color: "#78350f", margin: 0, fontSize: 12, lineHeight: 1.4 }}>
+                          <strong>Manager note:</strong> {h.notes}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <Btn variant="ghost" onClick={() => setShowHistory(false)} style={{ width: "100%", marginTop: 14 }}>Back</Btn>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
@@ -368,7 +426,8 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
                 </>
               )}
             </div>
-            <Btn variant="ghost" onClick={() => { setEmp(null); setMsg(null); }} style={{ width: "100%", marginTop: 10 }}>Back</Btn>
+            <Btn variant="outline" onClick={() => setShowHistory(true)} style={{ width: "100%", marginTop: 10 }}>View My Time Cards ({myHistory.length})</Btn>
+            <Btn variant="ghost" onClick={() => { setEmp(null); setMsg(null); }} style={{ width: "100%", marginTop: 8 }}>Back</Btn>
           </>
         )}
       </div>
@@ -935,7 +994,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
         <div style={{ display: "flex", flexDirection: "column" as const, gap: 12 }}>
           {filtered.map((h: any, i: number) => {
             const sc = statusColor[h.status] || "#94a3b8";
-            const isPending = h.status === "pending";
+            const canAct = h.status === "pending" || h.status === "edited";
             const fullDate = new Date(h.clockIn).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
             return (
               <div key={h.id || i} style={{ ...S.card, padding: 18 }}>
@@ -950,7 +1009,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
                   <Badge color={sc}>{h.status.charAt(0).toUpperCase() + h.status.slice(1)}</Badge>
                 </div>
                 {/* Detail row */}
-                <div style={{ display: "flex", gap: 18, flexWrap: "wrap" as const, marginBottom: isPending ? 16 : 0, paddingBottom: isPending ? 14 : 0, borderBottom: isPending ? "1px solid #f1f5f9" : "none" }}>
+                <div style={{ display: "flex", gap: 18, flexWrap: "wrap" as const, marginBottom: canAct || h.notes ? 16 : 0, paddingBottom: canAct || h.notes ? 14 : 0, borderBottom: canAct || h.notes ? "1px solid #f1f5f9" : "none" }}>
                   <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 14 }}>🕐</span>
                     {formatTime(h.clockIn)} – {formatTime(h.clockOut)}
@@ -968,7 +1027,15 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
                     {h.manager}
                   </span>
                 </div>
-                {isPending && (
+                {h.notes && (
+                  <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginBottom: canAct ? 14 : 0, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <span style={{ fontSize: 14 }}>✏️</span>
+                    <p style={{ color: "#78350f", margin: 0, fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>
+                      <strong>Manager note:</strong> {h.notes}
+                    </p>
+                  </div>
+                )}
+                {canAct && (
                   <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" as const }}>
                     <select
                       value={getManager(h)}
