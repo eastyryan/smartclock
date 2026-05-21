@@ -30,16 +30,16 @@ const MANAGERS = ["Nick Dean", "Jake Ryan"];
 const MANAGER_PIN = "7913";
 
 const INITIAL_SITES = [
-  { id: 1, name: "The Shop", address: "4271 Greenbank Rd, Ottawa, ON", lat: 45.2241, lng: -75.7186, active: true },
-  { id: 2, name: "Navaho", address: "8 Deerfield Dr, Ottawa, ON", lat: 45.3559, lng: -75.7520, active: true },
-  { id: 3, name: "Skyline", address: "42 Northview Rd, Ottawa, ON", lat: 45.3629, lng: -75.7296, active: true },
-  { id: 4, name: "Meadowlands", address: "1335 Meadowlands Dr E, Ottawa, ON", lat: 45.3564, lng: -75.7305, active: true },
-  { id: 5, name: "Craig Henry", address: "303B Craig Henry Dr, Ottawa, ON", lat: 45.3354, lng: -75.7634, active: true },
-  { id: 6, name: "Walkley", address: "550 Reardon Pvt, Ottawa, ON", lat: 45.3758, lng: -75.6483, active: true },
-  { id: 7, name: "Beaconwood", address: "2012 Beaconwood Dr, Ottawa, ON", lat: 45.4474, lng: -75.5971, active: true },
-  { id: 8, name: "Forestview", address: "651 Woodcliffe Pvt, Ottawa, ON", lat: 45.4619, lng: -75.5386, active: true },
-  { id: 9, name: "Aspenview", address: "1628 Teakdale Ave, Ottawa, ON", lat: 45.4517, lng: -75.5265, active: true },
-  { id: 10, name: "Castle Hill", address: "1000 Castle Hill Cres, Ottawa, ON", lat: 45.3696, lng: -75.7454, active: true },
+  { id: 1, name: "The Shop", address: "4271 Greenbank Rd, Ottawa, ON", lat: 45.2241, lng: -75.7186, radius: 359, active: true },
+  { id: 2, name: "Navaho", address: "8 Deerfield Dr, Ottawa, ON", lat: 45.3559, lng: -75.7520, radius: 359, active: true },
+  { id: 3, name: "Skyline", address: "42 Northview Rd, Ottawa, ON", lat: 45.3629, lng: -75.7296, radius: 359, active: true },
+  { id: 4, name: "Meadowlands", address: "1242 Meadowlands Dr E, Ottawa, ON", lat: 45.35909125246288, lng: -75.72347435767033, radius: 1000, active: true },
+  { id: 5, name: "Craig Henry", address: "269E Craig Henry Dr, Ottawa, ON", lat: 45.33510047434069, lng: -75.76491428943284, radius: 500, active: true },
+  { id: 6, name: "Walkley", address: "550 Reardon Pvt, Ottawa, ON", lat: 45.3758, lng: -75.6483, radius: 359, active: true },
+  { id: 7, name: "Beaconwood", address: "2012 Beaconwood Dr, Ottawa, ON", lat: 45.4474, lng: -75.5971, radius: 359, active: true },
+  { id: 8, name: "Forestview", address: "651 Woodcliffe Pvt, Ottawa, ON", lat: 45.4619, lng: -75.5386, radius: 359, active: true },
+  { id: 9, name: "Aspenview", address: "1628 Teakdale Ave, Ottawa, ON", lat: 45.4517, lng: -75.5265, radius: 359, active: true },
+  { id: 10, name: "Castle Hill", address: "1000 Castle Hill Cres, Ottawa, ON", lat: 45.3696, lng: -75.7454, radius: 359, active: true },
 ];
 
 const FENCE_RADIUS = 359;
@@ -291,7 +291,7 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
     setGeoStatus("checking");
     if (!navigator.geolocation) { setGeoStatus("unavailable"); return; }
     navigator.geolocation.getCurrentPosition(
-      (pos: GeolocationPosition) => { setGeoStatus(getDistance(pos.coords.latitude, pos.coords.longitude, s.lat, s.lng) <= FENCE_RADIUS ? "verified" : "too_far"); },
+      (pos: GeolocationPosition) => { setGeoStatus(getDistance(pos.coords.latitude, pos.coords.longitude, s.lat, s.lng) <= (s.radius || FENCE_RADIUS) ? "verified" : "too_far"); },
       () => setGeoStatus("denied")
     );
   }, [sites]);
