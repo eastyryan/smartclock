@@ -1,5 +1,5 @@
 "use client";
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from '../lib/supabase';
 
@@ -631,23 +631,192 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
     await onApprove(h.id);
   };
 
-  const exportExcel = () => {
-    const data = filtered.map((h: any) => ({
-      Employee: h.employee,
-      Site: h.site,
-      Manager: h.manager,
-      Date: formatDate(h.clockIn),
-      'Clock In': formatTime(h.clockIn),
-      'Clock Out': formatTime(h.clockOut),
-      Hours: h.hours,
-      Status: h.status,
-      Notes: h.notes || '',
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Pay Period');
-    const filename = 'payperiod_' + (selPeriod === 'all' ? 'all' : currentPP.label.replace(/[^\w]+/g, '_')) + '.xlsx';
-    XLSX.writeFile(wb, filename);
+  const exportExcel = async () => {
+    const BRAND_RED = "FFDC2626";
+    const DARK = "FF1E293B";
+    const SUBTOTAL_BG = "FFE5E7EB";
+    const ALT_BG = "FFF9FAFB";
+    const APPROVED_GREEN = "FF15803D";
+    const PENDING_AMBER = "FFB45309";
+    const REJECTED_RED = "FFB91C1C";
+    const BORDER = "FFE5E7EB";
+
+    const grouped: Record<string, any[]> = {};
+    filtered.forEach((h: any) => { (grouped[h.employee] ||= []).push(h); });
+    const employees = Object.keys(grouped).sort();
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Dean Ryans SmartClock";
+    wb.created = new Date();
+
+    // ===== Summary sheet =====
+    const summary = wb.addWorksheet("Summary");
+    summary.columns = [
+      { header: "Employee", key: "employee", width: 30 },
+      { header: "Shifts", key: "shifts", width: 10 },
+      { header: "Total Hours", key: "total", width: 14 },
+      { header: "Approved", key: "approved", width: 12 },
+      { header: "Pending", key: "pending", width: 12 },
+      { header: "Rejected", key: "rejected", width: 12 },
+    ];
+
+    // Title row
+    summary.spliceRows(1, 0, [
+      "Dean Ryans Pay Period — " + (selPeriod === "all" ? "All Time" : currentPP.label),
+    ]);
+    summary.mergeCells("A1:F1");
+    const title = summary.getCell("A1");
+    title.font = { bold: true, size: 16, color: { argb: "FFFFFFFF" } };
+    title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
+    title.alignment = { horizontal: "center", vertical: "middle" };
+    summary.getRow(1).height = 30;
+
+    // Style header row (row 2 after splice)
+    const summaryHeader = summary.getRow(2);
+    summaryHeader.values = ["Employee", "Shifts", "Total Hours", "Approved", "Pending", "Rejected"];
+    summaryHeader.eachCell((c) => {
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_RED } };
+      c.alignment = { horizontal: "center", vertical: "middle" };
+    });
+    summaryHeader.height = 24;
+
+    let gApproved = 0, gPending = 0, gRejected = 0, gTotal = 0, gShifts = 0;
+    employees.forEach((emp, idx) => {
+      const entries = grouped[emp];
+      const approved = entries.filter((e) => e.status === "approved").reduce((s, e) => s + (Number(e.hours) || 0), 0);
+      const pending = entries.filter((e) => e.status === "pending" || e.status === "edited").reduce((s, e) => s + (Number(e.hours) || 0), 0);
+      const rejected = entries.filter((e) => e.status === "rejected").reduce((s, e) => s + (Number(e.hours) || 0), 0);
+      const total = approved + pending;
+
+      const row = summary.addRow({ employee: emp, shifts: entries.length, total, approved, pending, rejected });
+      if (idx % 2 === 1) row.eachCell((c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ALT_BG } }; });
+      row.getCell("total").font = { bold: true, color: { argb: APPROVED_GREEN } };
+      row.getCell("approved").font = { color: { argb: APPROVED_GREEN } };
+      row.getCell("pending").font = { color: { argb: PENDING_AMBER } };
+      row.getCell("rejected").font = { color: { argb: REJECTED_RED } };
+      row.alignment = { horizontal: "center" };
+      row.getCell("employee").alignment = { horizontal: "left" };
+      [row.getCell("total"), row.getCell("approved"), row.getCell("pending"), row.getCell("rejected")].forEach((c) => { c.numFmt = "0.00"; });
+
+      gApproved += approved; gPending += pending; gRejected += rejected; gTotal += total; gShifts += entries.length;
+    });
+
+    const totalRow = summary.addRow({ employee: "TOTAL", shifts: gShifts, total: gTotal, approved: gApproved, pending: gPending, rejected: gRejected });
+    totalRow.eachCell((c) => {
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
+      c.alignment = { horizontal: "center" };
+    });
+    totalRow.getCell("employee").alignment = { horizontal: "left" };
+    [totalRow.getCell("total"), totalRow.getCell("approved"), totalRow.getCell("pending"), totalRow.getCell("rejected")].forEach((c) => { c.numFmt = "0.00"; });
+    totalRow.height = 26;
+
+    summary.eachRow((row) => {
+      row.eachCell((c) => {
+        c.border = {
+          top: { style: "thin", color: { argb: BORDER } },
+          left: { style: "thin", color: { argb: BORDER } },
+          bottom: { style: "thin", color: { argb: BORDER } },
+          right: { style: "thin", color: { argb: BORDER } },
+        };
+      });
+    });
+
+    // ===== Detail sheet =====
+    const detail = wb.addWorksheet("Detail");
+    detail.columns = [
+      { header: "Employee", key: "employee", width: 25 },
+      { header: "Date", key: "date", width: 14 },
+      { header: "Day", key: "day", width: 10 },
+      { header: "Site", key: "site", width: 18 },
+      { header: "Manager", key: "manager", width: 18 },
+      { header: "Clock In", key: "clockIn", width: 12 },
+      { header: "Clock Out", key: "clockOut", width: 12 },
+      { header: "Hours", key: "hours", width: 10 },
+      { header: "Status", key: "status", width: 12 },
+      { header: "Notes", key: "notes", width: 30 },
+    ];
+
+    const detailHeader = detail.getRow(1);
+    detailHeader.eachCell((c) => {
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_RED } };
+      c.alignment = { horizontal: "center", vertical: "middle" };
+    });
+    detailHeader.height = 24;
+
+    let detailGrand = 0;
+    employees.forEach((emp) => {
+      const entries = grouped[emp].slice().sort((a, b) => new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime());
+      let empTotal = 0;
+      entries.forEach((h, i) => {
+        const row = detail.addRow({
+          employee: h.employee,
+          date: formatDate(h.clockIn),
+          day: new Date(h.clockIn).toLocaleDateString("en-US", { weekday: "short" }),
+          site: h.site,
+          manager: h.manager,
+          clockIn: formatTime(h.clockIn),
+          clockOut: h.clockOut ? formatTime(h.clockOut) : "",
+          hours: Number(h.hours) || 0,
+          status: (h.status || "").charAt(0).toUpperCase() + (h.status || "").slice(1),
+          notes: h.notes || "",
+        });
+        if (i % 2 === 1) row.eachCell((c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ALT_BG } }; });
+        row.getCell("hours").numFmt = "0.00";
+        const sc = h.status === "approved" ? APPROVED_GREEN : h.status === "rejected" ? REJECTED_RED : h.status === "edited" ? "FF7C3AED" : PENDING_AMBER;
+        row.getCell("status").font = { bold: true, color: { argb: sc } };
+        if (h.status !== "rejected") empTotal += Number(h.hours) || 0;
+      });
+
+      const subtotal = detail.addRow({
+        employee: "", date: "", day: "", site: "", manager: "", clockIn: "",
+        clockOut: emp + " Subtotal",
+        hours: empTotal,
+        status: "", notes: "",
+      });
+      subtotal.eachCell((c) => {
+        c.font = { bold: true, color: { argb: DARK } };
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SUBTOTAL_BG } };
+      });
+      subtotal.getCell("clockOut").alignment = { horizontal: "right" };
+      subtotal.getCell("hours").numFmt = "0.00";
+      detailGrand += empTotal;
+
+      detail.addRow({}); // spacer
+    });
+
+    const detailTotal = detail.addRow({
+      clockOut: "GRAND TOTAL",
+      hours: detailGrand,
+    });
+    detailTotal.eachCell((c) => {
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
+    });
+    detailTotal.getCell("clockOut").alignment = { horizontal: "right" };
+    detailTotal.getCell("hours").numFmt = "0.00";
+    detailTotal.height = 26;
+
+    detail.eachRow((row) => {
+      row.eachCell((c) => {
+        c.border = {
+          top: { style: "thin", color: { argb: BORDER } },
+          left: { style: "thin", color: { argb: BORDER } },
+          bottom: { style: "thin", color: { argb: BORDER } },
+          right: { style: "thin", color: { argb: BORDER } },
+        };
+      });
+    });
+
+    const filename = "payperiod_" + (selPeriod === "all" ? "all" : currentPP.label.replace(/[^\w]+/g, "_")) + ".xlsx";
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
   };
 
   const openEdit = (h: any) => {
