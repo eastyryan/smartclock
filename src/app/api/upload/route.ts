@@ -55,6 +55,10 @@ export async function POST(request: Request) {
     const siteName = formData.get('siteName');
     const employeeName = formData.get('employeeName');
     const files = formData.getAll('files').filter((f): f is File => f instanceof File);
+    const notes = files.map((_, i) => {
+      const v = formData.get('note_' + i);
+      return typeof v === 'string' ? v.trim() : '';
+    });
 
     if (typeof siteName !== 'string' || typeof employeeName !== 'string' || files.length === 0) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -68,11 +72,13 @@ export async function POST(request: Request) {
       const buffer = Buffer.from(await file.arrayBuffer());
       const ext = file.name.split('.').pop() || 'jpg';
       const fileName = today + '_' + employeeName + '_photo_' + (i + 1) + '.' + ext;
+      const note = notes[i];
 
       const uploaded = await drive.files.create({
         requestBody: {
           name: fileName,
           parents: [siteFolderId],
+          ...(note ? { description: note } : {}),
         },
         media: {
           mimeType: file.type || 'image/jpeg',

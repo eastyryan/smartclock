@@ -117,7 +117,10 @@ async function uploadToGoogleDrive(files: any[], siteName: string, employeeName:
   const formData = new FormData();
   formData.append('siteName', siteName);
   formData.append('employeeName', employeeName);
-  files.forEach((f: any) => formData.append('files', f.file));
+  files.forEach((f: any, i: number) => {
+    formData.append('files', f.file);
+    formData.append('note_' + i, f.note || '');
+  });
   try {
     const res = await fetch('/api/upload', { method: 'POST', body: formData });
     if (!res.ok) {
@@ -384,8 +387,12 @@ function PhotoPage({ sites }: any) {
   const activeSites = sites.filter((s: any) => s.active);
 
   const handleFiles = (files: FileList) => {
-    const arr = Array.from(files).map((f: File) => ({ name: f.name, url: URL.createObjectURL(f), file: f }));
+    const arr = Array.from(files).map((f: File) => ({ name: f.name, url: URL.createObjectURL(f), file: f, note: "" }));
     setPhotos((p: any[]) => [...p, ...arr]);
+  };
+
+  const updateNote = (i: number, note: string) => {
+    setPhotos((p: any[]) => p.map((x: any, j: number) => j === i ? { ...x, note } : x));
   };
 
   const upload = async () => {
@@ -452,11 +459,20 @@ function PhotoPage({ sites }: any) {
           <p style={{ color: "#94a3b8", margin: "0 0 12px", fontSize: 11, textAlign: "center" as const }}>All formats accepted (HEIC, JPG, PNG, WebP)</p>
           {photos.length > 0 && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 16 }}>
                 {photos.map((p: any, i: number) => (
-                  <div key={i} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "1", border: "1px solid #e5e7eb" }}>
-                    <img src={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    <button onClick={() => setPhotos((x: any[]) => x.filter((_: any, j: number) => j !== i))} style={{ position: "absolute", top: 4, right: 4, width: 24, height: 24, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>X</button>
+                  <div key={i} style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #e5e7eb", background: "#fff", display: "flex", flexDirection: "column" as const }}>
+                    <div style={{ position: "relative", aspectRatio: "1" }}>
+                      <img src={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      <button onClick={() => setPhotos((x: any[]) => x.filter((_: any, j: number) => j !== i))} style={{ position: "absolute", top: 4, right: 4, width: 24, height: 24, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>X</button>
+                    </div>
+                    <textarea
+                      value={p.note || ""}
+                      onChange={(e) => updateNote(i, e.target.value)}
+                      placeholder="Add a caption (optional)..."
+                      rows={2}
+                      style={{ width: "100%", border: "none", borderTop: "1px solid #f1f5f9", padding: "8px 10px", fontSize: 12, color: "#1e293b", outline: "none", background: "#fff", boxSizing: "border-box" as const, resize: "none" as const, fontFamily: "inherit", minHeight: 44 }}
+                    />
                   </div>
                 ))}
               </div>
