@@ -380,6 +380,7 @@ function PhotoPage({ sites }: any) {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const activeSites = sites.filter((s: any) => s.active);
 
   const handleFiles = (files: FileList) => {
@@ -434,12 +435,21 @@ function PhotoPage({ sites }: any) {
         <div style={S.card}>
           <Select label="Job Site" placeholder="Select job site" value={site} onChange={(e: any) => setSite(e.target.value)}
             options={activeSites.map((s: any) => ({ value: s.id, label: s.name }))} />
-          <div style={{ border: "2px dashed #d1d5db", borderRadius: 12, padding: 32, textAlign: "center" as const, marginBottom: 16, cursor: "pointer", background: "#fafbfc" }}
-            onClick={() => fileRef.current?.click()}>
-            <p style={{ color: "#64748b", margin: 0, fontSize: 14, fontWeight: 500 }}>Tap to take a photo or select from gallery</p>
-            <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: 12 }}>All formats accepted (HEIC, JPG, PNG, WebP)</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+            <button type="button" onClick={() => cameraRef.current?.click()}
+              style={{ padding: "16px 12px", borderRadius: 12, border: "2px dashed #d1d5db", background: "#fafbfc", cursor: "pointer", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 24 }}>📷</span>
+              <span style={{ color: "#1e293b", fontSize: 13, fontWeight: 600 }}>Take Photo</span>
+            </button>
+            <button type="button" onClick={() => fileRef.current?.click()}
+              style={{ padding: "16px 12px", borderRadius: 12, border: "2px dashed #d1d5db", background: "#fafbfc", cursor: "pointer", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 24 }}>🖼️</span>
+              <span style={{ color: "#1e293b", fontSize: 13, fontWeight: 600 }}>Choose from Gallery</span>
+            </button>
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e: any) => handleFiles(e.target.files)} />
             <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple hidden onChange={(e: any) => handleFiles(e.target.files)} />
           </div>
+          <p style={{ color: "#94a3b8", margin: "0 0 12px", fontSize: 11, textAlign: "center" as const }}>All formats accepted (HEIC, JPG, PNG, WebP)</p>
           {photos.length > 0 && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 16 }}>

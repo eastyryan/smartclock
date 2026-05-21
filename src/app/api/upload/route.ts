@@ -2,6 +2,8 @@ import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
 import { Readable } from 'stream';
 
+export const maxDuration = 60;
+
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET
@@ -61,10 +63,8 @@ export async function POST(request: Request) {
     const siteFolderId = await findOrCreateFolder(siteName, ROOT_FOLDER_ID);
 
     const today = new Date().toISOString().split('T')[0];
-    const uploadedFiles: Array<{ id: string | null | undefined; name: string | null | undefined; link: string | null | undefined }> = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    const uploadedFiles = await Promise.all(files.map(async (file, i) => {
       const buffer = Buffer.from(await file.arrayBuffer());
       const ext = file.name.split('.').pop() || 'jpg';
       const fileName = today + '_' + employeeName + '_photo_' + (i + 1) + '.' + ext;
@@ -82,12 +82,12 @@ export async function POST(request: Request) {
         supportsAllDrives: true,
       });
 
-      uploadedFiles.push({
+      return {
         id: uploaded.data.id,
         name: uploaded.data.name,
         link: uploaded.data.webViewLink,
-      });
-    }
+      };
+    }));
 
     return NextResponse.json({
       success: true,
