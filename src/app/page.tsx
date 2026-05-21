@@ -632,8 +632,8 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
   };
 
   const exportExcel = async () => {
-    const BRAND_RED = "FFDC2626";
-    const DARK = "FF1E293B";
+    const HEADER_BLUE = "FF5B9BD5";
+    const DARK = "FF3A506B";
     const SUBTOTAL_BG = "FFE5E7EB";
     const ALT_BG = "FFF9FAFB";
     const APPROVED_GREEN = "FF15803D";
@@ -676,7 +676,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
     summaryHeader.values = ["Employee", "Shifts", "Total Hours", "Approved", "Pending", "Rejected"];
     summaryHeader.eachCell((c) => {
       c.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_RED } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BLUE } };
       c.alignment = { horizontal: "center", vertical: "middle" };
     });
     summaryHeader.height = 24;
@@ -741,7 +741,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
     const detailHeader = detail.getRow(1);
     detailHeader.eachCell((c) => {
       c.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_RED } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BLUE } };
       c.alignment = { horizontal: "center", vertical: "middle" };
     });
     detailHeader.height = 24;
