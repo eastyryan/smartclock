@@ -1,4 +1,5 @@
 "use client";
+import * as XLSX from 'xlsx';
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from '../lib/supabase';
 
@@ -56,6 +57,7 @@ function mapRow(row: any) {
     status: row.status,
     lat: row.lat,
     lng: row.lng,
+    notes: row.notes,
   };
 }
 
@@ -612,25 +614,95 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
   );
 }
 
-function PayPeriod({ history, onApprove, onReject, onEditHours, managerAuth, setManagerAuth }: any) {
-  const [editIdx, setEditIdx] = useState<string | null>(null);
-  const [editHrs, setEditHrs] = useState("");
+function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAuth, setManagerAuth }: any) {
   const [selPeriod, setSelPeriod] = useState("current");
+  const [editing, setEditing] = useState<any>(null);
+  const [overrideMgr, setOverrideMgr] = useState<Record<string, string>>({});
 
   if (!managerAuth) return <PinEntry title="Pay Period History" subtitle="Manager access required" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />;
 
   const currentPP = getCurrentPayPeriod();
   const filtered = selPeriod === "all" ? history : history.filter((h: any) => { const d = new Date(h.clockIn); return d >= currentPP.start && d <= currentPP.end; });
-  const approve = (id: string) => onApprove(id);
-  const reject = (id: string) => onReject(id);
-  const saveEdit = (id: string) => { onEditHours(id, parseFloat(editHrs)); setEditIdx(null); };
-  const exportCSV = () => {
-    let csv = "Employee,Site,Manager,Clock In,Clock Out,Hours,Status\n";
-    filtered.forEach((h: any) => { csv += '"' + h.employee + '","' + h.site + '","' + h.manager + '","' + formatDate(h.clockIn) + " " + formatTime(h.clockIn) + '","' + formatDate(h.clockOut) + " " + formatTime(h.clockOut) + '",' + h.hours + ',"' + h.status + '"\n'; });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "payperiod_export.csv"; a.click();
+
+  const getManager = (h: any) => overrideMgr[h.id] ?? h.manager;
+  const doApprove = async (h: any) => {
+    const mgr = getManager(h);
+    if (mgr !== h.manager) await onEditEntry(h.id, { manager: mgr });
+    await onApprove(h.id);
   };
+
+  const exportExcel = () => {
+    const data = filtered.map((h: any) => ({
+      Employee: h.employee,
+      Site: h.site,
+      Manager: h.manager,
+      Date: formatDate(h.clockIn),
+      'Clock In': formatTime(h.clockIn),
+      'Clock Out': formatTime(h.clockOut),
+      Hours: h.hours,
+      Status: h.status,
+      Notes: h.notes || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Pay Period');
+    const filename = 'payperiod_' + (selPeriod === 'all' ? 'all' : currentPP.label.replace(/[^\w]+/g, '_')) + '.xlsx';
+    XLSX.writeFile(wb, filename);
+  };
+
+  const openEdit = (h: any) => {
+    const ci = new Date(h.clockIn);
+    const co = new Date(h.clockOut);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setEditing({
+      id: h.id,
+      date: ci.getFullYear() + '-' + pad(ci.getMonth() + 1) + '-' + pad(ci.getDate()),
+      ci: pad(ci.getHours()) + ':' + pad(ci.getMinutes()),
+      co: pad(co.getHours()) + ':' + pad(co.getMinutes()),
+      siteId: h.siteId,
+      siteName: h.site,
+      manager: h.manager,
+      notes: h.notes || '',
+      employee: h.employee,
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const newCi = new Date(editing.date + 'T' + editing.ci + ':00').toISOString();
+    const newCo = new Date(editing.date + 'T' + editing.co + ':00').toISOString();
+    const newHours = calcHours(newCi, newCo);
+    const site = sites.find((s: any) => s.id === Number(editing.siteId));
+    await onEditEntry(editing.id, {
+      clockIn: newCi,
+      clockOut: newCo,
+      hours: newHours,
+      site: site ? site.name : editing.siteName,
+      siteId: Number(editing.siteId),
+      manager: editing.manager,
+      notes: editing.notes,
+    });
+    setEditing(null);
+  };
+
+  const liveHours = editing ? (() => {
+    try {
+      const ci = new Date(editing.date + 'T' + editing.ci + ':00');
+      const co = new Date(editing.date + 'T' + editing.co + ':00');
+      return calcHours(ci.toISOString(), co.toISOString());
+    } catch { return 0; }
+  })() : 0;
+
   const totalHrs = filtered.filter((h: any) => h.status !== "rejected").reduce((s: number, h: any) => s + h.hours, 0);
   const statusColor: any = { pending: "#f59e0b", approved: "#16a34a", rejected: "#dc2626", edited: "#7c3aed" };
+
+  const siteOptions = (currentSiteId: number, currentSiteName: string) => {
+    const opts = sites.filter((s: any) => s.active || s.id === currentSiteId).map((s: any) => ({ value: s.id, label: s.name }));
+    if (currentSiteId && !opts.find((o: any) => o.value === currentSiteId)) {
+      opts.unshift({ value: currentSiteId, label: currentSiteName });
+    }
+    return opts;
+  };
 
   return (
     <div style={{ width: "100%" }}>
@@ -644,7 +716,7 @@ function PayPeriod({ history, onApprove, onReject, onEditHours, managerAuth, set
             <option value="current">{currentPP.label}</option>
             <option value="all">All Time</option>
           </select>
-          <Btn variant="outline" onClick={exportCSV} disabled={filtered.length === 0} style={{ padding: "8px 16px", fontSize: 13 }}>Export CSV</Btn>
+          <Btn variant="outline" onClick={exportExcel} disabled={filtered.length === 0} style={{ padding: "8px 16px", fontSize: 13 }}>Export Excel</Btn>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
@@ -665,37 +737,69 @@ function PayPeriod({ history, onApprove, onReject, onEditHours, managerAuth, set
           <h3 style={{ color: "#94a3b8", fontWeight: 500 }}>No entries for this period</h3>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column" as const, gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column" as const, gap: 12 }}>
           {filtered.map((h: any, i: number) => {
+            const sc = statusColor[h.status] || "#94a3b8";
+            const isPending = h.status === "pending";
+            const fullDate = new Date(h.clockIn).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
             return (
-              <div key={h.id || i} style={{ ...S.card, padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" as const, gap: 10 }}>
-                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flex: 1, minWidth: 200 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: (statusColor[h.status] || "#94a3b8") + "18", display: "flex", alignItems: "center", justifyContent: "center", color: statusColor[h.status] || "#94a3b8", fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{h.employee[0]}</div>
-                    <div>
-                      <p style={{ color: "#1e293b", margin: 0, fontWeight: 700, fontSize: 15 }}>{h.employee}</p>
-                      <p style={{ color: "#64748b", margin: "2px 0", fontSize: 13 }}>{h.site} - {h.manager}</p>
-                      <p style={{ color: "#94a3b8", margin: 0, fontSize: 12 }}>{formatDate(h.clockIn)} {formatTime(h.clockIn)} to {formatTime(h.clockOut)}</p>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" as const }}>
-                    {editIdx === h.id ? (
-                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <input value={editHrs} onChange={(e) => setEditHrs(e.target.value)} type="number" step="0.25" style={{ width: 70, padding: "6px 10px", background: "#f8fafc", border: "1px solid #d1d5db", borderRadius: 8, color: "#1e293b", fontSize: 15, fontWeight: 700 }} />
-                        <button onClick={() => saveEdit(h.id)} style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Save</button>
-                        <button onClick={() => setEditIdx(null)} style={{ background: "#f1f5f9", color: "#64748b", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 13 }}>Cancel</button>
-                      </div>
-                    ) : (
-                      <p style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 22, fontWeight: 800 }}>{h.hours}h</p>
-                    )}
-                    <Badge color={statusColor[h.status] || "#94a3b8"}>{h.status.toUpperCase()}</Badge>
-                  </div>
+              <div key={h.id || i} style={{ ...S.card, padding: 18 }}>
+                {/* Header row: name + hours */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                  <p style={{ color: "#1e293b", margin: 0, fontWeight: 800, fontSize: 18 }}>{h.employee}</p>
+                  <p style={{ color: "#1e293b", margin: 0, fontWeight: 800, fontSize: 20 }}>{h.hours}h</p>
                 </div>
-                {h.status === "pending" && editIdx !== h.id && (
-                  <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
-                    <button onClick={() => approve(h.id)} style={{ flex: 1, padding: "8px 0", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, color: "#15803d", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Approve</button>
-                    <button onClick={() => reject(h.id)} style={{ flex: 1, padding: "8px 0", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Reject</button>
-                    <button onClick={() => { setEditIdx(h.id); setEditHrs(String(h.hours)); }} style={{ flex: 1, padding: "8px 0", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, color: "#7c3aed", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Edit</button>
+                {/* Date + status */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <p style={{ color: "#64748b", margin: 0, fontSize: 13 }}>{fullDate}</p>
+                  <Badge color={sc}>{h.status.charAt(0).toUpperCase() + h.status.slice(1)}</Badge>
+                </div>
+                {/* Detail row */}
+                <div style={{ display: "flex", gap: 18, flexWrap: "wrap" as const, marginBottom: isPending ? 16 : 0, paddingBottom: isPending ? 14 : 0, borderBottom: isPending ? "1px solid #f1f5f9" : "none" }}>
+                  <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 14 }}>🕐</span>
+                    {formatTime(h.clockIn)} – {formatTime(h.clockOut)}
+                  </span>
+                  <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 14 }}>🍱</span>
+                    30min
+                  </span>
+                  <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 14 }}>📍</span>
+                    {h.site}
+                  </span>
+                  <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 14 }}>👤</span>
+                    {h.manager}
+                  </span>
+                </div>
+                {isPending && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" as const }}>
+                    <select
+                      value={getManager(h)}
+                      onChange={(e) => setOverrideMgr((p) => ({ ...p, [h.id]: e.target.value }))}
+                      style={{ padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", color: "#1e293b", fontSize: 13, fontWeight: 600, minWidth: 130, cursor: "pointer" }}
+                    >
+                      {MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <button
+                      onClick={() => doApprove(h)}
+                      style={{ flex: 1, minWidth: 160, padding: "11px 20px", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", border: "none", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                    >
+                      <span style={{ fontSize: 15 }}>✓</span> Approve
+                    </button>
+                    <button
+                      onClick={() => onReject(h.id)}
+                      style={{ padding: "11px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                    >
+                      <span style={{ fontSize: 15 }}>✗</span> Reject
+                    </button>
+                    <button
+                      onClick={() => openEdit(h)}
+                      style={{ padding: "11px 16px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 10, color: "#475569", cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                    >
+                      <span style={{ fontSize: 14 }}>✎</span> Edit
+                    </button>
                   </div>
                 )}
               </div>
@@ -703,6 +807,99 @@ function PayPeriod({ history, onApprove, onReject, onEditHours, managerAuth, set
           })}
         </div>
       )}
+
+      {/* Edit Modal */}
+      <Modal open={!!editing} onClose={() => setEditing(null)}>
+        {editing && (
+          <>
+            <h3 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>Edit Shift</h3>
+            <p style={{ color: "#94a3b8", margin: "0 0 20px", fontSize: 13 }}>{editing.employee}</p>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Date</label>
+              <input
+                type="date"
+                value={editing.date}
+                onChange={(e) => setEditing((p: any) => ({ ...p, date: e.target.value }))}
+                style={S.input}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Clock In</label>
+                <input
+                  type="time"
+                  value={editing.ci}
+                  onChange={(e) => setEditing((p: any) => ({ ...p, ci: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Clock Out</label>
+                <input
+                  type="time"
+                  value={editing.co}
+                  onChange={(e) => setEditing((p: any) => ({ ...p, co: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
+            </div>
+
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+              <p style={{ margin: 0, color: "#15803d", fontSize: 13, fontWeight: 700 }}>
+                {liveHours}h net <span style={{ fontWeight: 500, color: "#16a34a" }}>/ after 30-min lunch deduction</span>
+              </p>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Job Site</label>
+              <select
+                value={editing.siteId || ""}
+                onChange={(e) => setEditing((p: any) => ({ ...p, siteId: Number(e.target.value) }))}
+                style={{ ...S.input, appearance: "none" as const }}
+              >
+                {siteOptions(editing.siteId, editing.siteName).map((o: any) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Manager</label>
+              <select
+                value={editing.manager || ""}
+                onChange={(e) => setEditing((p: any) => ({ ...p, manager: e.target.value }))}
+                style={{ ...S.input, appearance: "none" as const }}
+              >
+                {MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Notes</label>
+              <textarea
+                value={editing.notes}
+                onChange={(e) => setEditing((p: any) => ({ ...p, notes: e.target.value }))}
+                placeholder="Reason for edit (optional)..."
+                rows={3}
+                style={{ ...S.input, resize: "vertical" as const, fontFamily: "inherit" }}
+              />
+            </div>
+
+            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 18 }}>
+              <p style={{ margin: 0, color: "#b45309", fontSize: 12, fontWeight: 600 }}>
+                ✏️ Manager edit — changes are saved immediately to the database.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn variant="success" onClick={saveEdit} style={{ flex: 1 }}>Save Changes</Btn>
+              <Btn variant="ghost" onClick={() => setEditing(null)} style={{ flex: 1 }}>Cancel</Btn>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -859,12 +1056,18 @@ export default function App() {
     }
   };
 
-  const onEditHours = async (id: string, hrs: number) => {
-    const { error } = await supabase.from('clock_events').update({ hours: hrs, status: 'edited' }).eq('id', id);
-    if (!error) {
-      setHistory((p) => p.map((h) => h.id === id ? { ...h, hours: hrs, status: 'edited' } : h));
-    }
-  };
+  const onEditEntry = useCallback(async (id: string, updates: any) => {
+    const dbUpdates: any = { status: 'edited' };
+    if (updates.clockIn !== undefined) dbUpdates.clock_in = updates.clockIn;
+    if (updates.clockOut !== undefined) dbUpdates.clock_out = updates.clockOut;
+    if (updates.hours !== undefined) dbUpdates.hours = updates.hours;
+    if (updates.site !== undefined) dbUpdates.site_name = updates.site;
+    if (updates.siteId !== undefined) dbUpdates.site_id = updates.siteId;
+    if (updates.manager !== undefined) dbUpdates.manager_name = updates.manager;
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+    await supabase.from('clock_events').update(dbUpdates).eq('id', id);
+    setHistory((p: any[]) => p.map((h: any) => h.id === id ? { ...h, ...updates, status: 'edited' } : h));
+  }, []);
 
   const onAddSite = async (siteData: any) => {
     const { data, error } = await supabase.from('job_sites').insert(siteData).select().single();
@@ -935,7 +1138,7 @@ export default function App() {
         {page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} onClockIn={onClockIn} onClockOut={onClockOut} history={history} />}
         {page === 1 && <PhotoPage sites={sites} />}
         {page === 2 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {page === 3 && <PayPeriod history={history} onApprove={onApprove} onReject={onReject} onEditHours={onEditHours} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {page === 3 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
         {page === 4 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
       </div>
     </div>
