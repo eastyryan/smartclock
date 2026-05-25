@@ -6,13 +6,13 @@ import { supabase } from '../lib/supabase';
 const EMPLOYEES = [
   { name: "Adrian", pin: "3847" },
   { name: "Antonio Alvarez", pin: "6192" },
-  { name: "Brandi Larabie", pin: "5038" },
+  { name: "Brandy Larabie", pin: "5038" },
   { name: "Cameron Rice", pin: "7261" },
   { name: "Carolina Landa", pin: "4915" },
   { name: "Easton Ryan", pin: "8374" },
-  { name: "Everist Sundit", pin: "2659" },
+  { name: "Evariste Sindayizeruka", pin: "2659" },
   { name: "Griffin Kay", pin: "9123" },
-  { name: "Haydon Rice", pin: "1486" },
+  { name: "Hayden Rice", pin: "1486" },
   { name: "Isabella Dean", pin: "7530" },
   { name: "Jonathan Ceballos", pin: "4271" },
   { name: "Karen Constantino", pin: "8609" },
@@ -263,7 +263,7 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
       <div style={{ ...S.card, maxWidth: 400, width: "100%", textAlign: "center" as const, padding: "28px 24px 24px" }}>
-        <div style={{ width: 56, height: 56, borderRadius: "50%", background: type === "manager" ? "linear-gradient(135deg, #f59e0b, #d97706)" : "linear-gradient(135deg, #dc2626, #b91c1c)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 24 }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #dc2626, #b91c1c)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 24 }}>
           {type === "manager" ? "🔒" : "👤"}
         </div>
         <h2 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20 }}>{title}</h2>
@@ -704,10 +704,11 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
   );
 }
 
-function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAuth, setManagerAuth }: any) {
+function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateEntry, managerAuth, setManagerAuth }: any) {
   const [selPeriod, setSelPeriod] = useState("current");
   const [editing, setEditing] = useState<any>(null);
   const [editErr, setEditErr] = useState("");
+  const [creating, setCreating] = useState<any>(null);
   const [overrideMgr, setOverrideMgr] = useState<Record<string, string>>({});
 
   if (!managerAuth) return <PinEntry title="Pay Period History" subtitle="Manager access required" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />;
@@ -970,6 +971,49 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
     setEditErr("");
   };
 
+  const openCreate = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setCreating({
+      employee: '',
+      date: now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()),
+      ci: '08:00',
+      co: '16:00',
+      siteId: '',
+      manager: '',
+      notes: '',
+    });
+  };
+
+  const saveCreate = async () => {
+    if (!creating) return;
+    if (!creating.employee || !creating.siteId || !creating.manager) return;
+    const newCi = new Date(creating.date + 'T' + creating.ci + ':00').toISOString();
+    const newCo = new Date(creating.date + 'T' + creating.co + ':00').toISOString();
+    if (new Date(newCo).getTime() <= new Date(newCi).getTime()) return;
+    const hours = calcHours(newCi, newCo);
+    const site = sites.find((s: any) => s.id === Number(creating.siteId));
+    await onCreateEntry({
+      employee: creating.employee,
+      clockIn: newCi,
+      clockOut: newCo,
+      hours,
+      site: site ? site.name : '',
+      siteId: Number(creating.siteId),
+      manager: creating.manager,
+      notes: creating.notes,
+    });
+    setCreating(null);
+  };
+
+  const liveCreateHours = creating ? (() => {
+    try {
+      const ci = new Date(creating.date + 'T' + creating.ci + ':00');
+      const co = new Date(creating.date + 'T' + creating.co + ':00');
+      return calcHours(ci.toISOString(), co.toISOString());
+    } catch { return 0; }
+  })() : 0;
+
   const liveHours = editing ? (() => {
     try {
       const ci = new Date(editing.date + 'T' + editing.ci + ':00');
@@ -1001,6 +1045,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
             <option value="current">{currentPP.label}</option>
             <option value="all">All Time</option>
           </select>
+          <Btn onClick={openCreate} style={{ padding: "8px 16px", fontSize: 13 }}>+ Create Time Card</Btn>
           <Btn variant="outline" onClick={exportExcel} disabled={filtered.length === 0} style={{ padding: "8px 16px", fontSize: 13 }}>Export Excel</Btn>
         </div>
       </div>
@@ -1025,7 +1070,8 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
         <div style={{ display: "flex", flexDirection: "column" as const, gap: 12 }}>
           {filtered.map((h: any, i: number) => {
             const sc = statusColor[h.status] || "#94a3b8";
-            const canAct = h.status === "pending" || h.status === "edited";
+            const showApprove = h.status !== "approved";
+            const showReject = h.status === "pending" || h.status === "edited";
             const fullDate = new Date(h.clockIn).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
             return (
               <div key={h.id || i} style={{ ...S.card, padding: 18 }}>
@@ -1040,7 +1086,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
                   <Badge color={sc}>{h.status.charAt(0).toUpperCase() + h.status.slice(1)}</Badge>
                 </div>
                 {/* Detail row */}
-                <div style={{ display: "flex", gap: 18, flexWrap: "wrap" as const, marginBottom: canAct || h.notes ? 16 : 0, paddingBottom: canAct || h.notes ? 14 : 0, borderBottom: canAct || h.notes ? "1px solid #f1f5f9" : "none" }}>
+                <div style={{ display: "flex", gap: 18, flexWrap: "wrap" as const, marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #f1f5f9" }}>
                   <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 14 }}>🕐</span>
                     {formatTime(h.clockIn)} – {formatTime(h.clockOut)}
@@ -1059,21 +1105,20 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
                   </span>
                 </div>
                 {h.notes && (
-                  <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginBottom: canAct ? 14 : 0, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginBottom: 14, display: "flex", gap: 8, alignItems: "flex-start" }}>
                     <span style={{ fontSize: 14 }}>✏️</span>
                     <p style={{ color: "#78350f", margin: 0, fontSize: 13, fontWeight: 500, lineHeight: 1.4, whiteSpace: "pre-wrap" as const }}>
                       <strong>Manager note:</strong> {h.notes}
                     </p>
                   </div>
                 )}
-                {canAct && (
-                  <>
-                  {h.status === "edited" && (
-                    <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 600, color: "#7c3aed" }}>
-                      This shift was edited — approve or reject to finalize it.
-                    </p>
-                  )}
-                  <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" as const }}>
+                {h.status === "edited" && (
+                  <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 600, color: "#7c3aed" }}>
+                    This shift was edited — approve or reject to finalize it.
+                  </p>
+                )}
+                <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" as const }}>
+                  {showApprove && (
                     <select
                       value={getManager(h)}
                       onChange={(e) => setOverrideMgr((p) => ({ ...p, [h.id]: e.target.value }))}
@@ -1081,27 +1126,30 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
                     >
                       {MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
+                  )}
+                  {showApprove && (
                     <button
                       onClick={() => doApprove(h)}
                       style={{ flex: 1, minWidth: 160, padding: "11px 20px", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", border: "none", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                     >
                       <span style={{ fontSize: 15 }}>✓</span> Approve
                     </button>
+                  )}
+                  {showReject && (
                     <button
                       onClick={() => onReject(h.id)}
-                      style={{ padding: "11px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                      style={{ flex: showApprove ? "0 1 auto" : 1, minWidth: 160, padding: "11px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                     >
                       <span style={{ fontSize: 15 }}>✗</span> Reject
                     </button>
-                    <button
-                      onClick={() => openEdit(h)}
-                      style={{ padding: "11px 16px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 10, color: "#475569", cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-                    >
-                      <span style={{ fontSize: 14 }}>✎</span> Edit
-                    </button>
-                  </div>
-                  </>
-                )}
+                  )}
+                  <button
+                    onClick={() => openEdit(h)}
+                    style={{ flex: !showApprove && !showReject ? 1 : "0 1 auto", minWidth: 120, padding: "11px 16px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 10, color: "#475569", cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                  >
+                    <span style={{ fontSize: 14 }}>✎</span> Edit
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -1197,6 +1245,120 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
             <div style={{ display: "flex", gap: 10 }}>
               <Btn variant="success" onClick={saveEdit} style={{ flex: 1 }}>Save Changes</Btn>
               <Btn variant="ghost" onClick={() => setEditing(null)} style={{ flex: 1 }}>Cancel</Btn>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* Create Time Card Modal */}
+      <Modal open={!!creating} onClose={() => setCreating(null)}>
+        {creating && (
+          <>
+            <h3 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>Create Time Card</h3>
+            <p style={{ color: "#94a3b8", margin: "0 0 20px", fontSize: 13 }}>Manually add a shift for an employee — no location check required.</p>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Employee</label>
+              <select
+                value={creating.employee}
+                onChange={(e) => setCreating((p: any) => ({ ...p, employee: e.target.value }))}
+                style={{ ...S.input, appearance: "none" as const }}
+              >
+                <option value="">Select employee...</option>
+                {EMPLOYEES.map((emp) => <option key={emp.name} value={emp.name}>{emp.name}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Date</label>
+              <input
+                type="date"
+                value={creating.date}
+                onChange={(e) => setCreating((p: any) => ({ ...p, date: e.target.value }))}
+                style={S.input}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Clock In</label>
+                <input
+                  type="time"
+                  value={creating.ci}
+                  onChange={(e) => setCreating((p: any) => ({ ...p, ci: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Clock Out</label>
+                <input
+                  type="time"
+                  value={creating.co}
+                  onChange={(e) => setCreating((p: any) => ({ ...p, co: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
+            </div>
+
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+              <p style={{ margin: 0, color: "#15803d", fontSize: 13, fontWeight: 700 }}>
+                {liveCreateHours}h net <span style={{ fontWeight: 500, color: "#16a34a" }}>/ after 30-min lunch deduction</span>
+              </p>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Job Site</label>
+              <select
+                value={creating.siteId || ""}
+                onChange={(e) => setCreating((p: any) => ({ ...p, siteId: Number(e.target.value) }))}
+                style={{ ...S.input, appearance: "none" as const }}
+              >
+                <option value="">Select site...</option>
+                {sites.filter((s: any) => s.active).map((s: any) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Manager</label>
+              <select
+                value={creating.manager || ""}
+                onChange={(e) => setCreating((p: any) => ({ ...p, manager: e.target.value }))}
+                style={{ ...S.input, appearance: "none" as const }}
+              >
+                <option value="">Select manager...</option>
+                {MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Notes</label>
+              <textarea
+                value={creating.notes}
+                onChange={(e) => setCreating((p: any) => ({ ...p, notes: e.target.value }))}
+                placeholder="e.g. Forgot to clock in (optional)..."
+                rows={3}
+                style={{ ...S.input, resize: "vertical" as const, fontFamily: "inherit" }}
+              />
+            </div>
+
+            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 18 }}>
+              <p style={{ margin: 0, color: "#b45309", fontSize: 12, fontWeight: 600 }}>
+                ✏️ This card will be added as Pending for your review.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn
+                variant="success"
+                onClick={saveCreate}
+                disabled={!creating.employee || !creating.siteId || !creating.manager || liveCreateHours <= 0}
+                style={{ flex: 1 }}
+              >
+                Create Card
+              </Btn>
+              <Btn variant="ghost" onClick={() => setCreating(null)} style={{ flex: 1 }}>Cancel</Btn>
             </div>
           </>
         )}
@@ -1370,6 +1532,23 @@ export default function App() {
     setHistory((p: any[]) => p.map((h: any) => h.id === id ? { ...h, ...updates, status: 'edited' } : h));
   }, []);
 
+  const onCreateEntry = useCallback(async (entry: any) => {
+    const { data, error } = await supabase.from('clock_events').insert({
+      employee_name: entry.employee,
+      site_name: entry.site,
+      site_id: entry.siteId,
+      manager_name: entry.manager,
+      clock_in: entry.clockIn,
+      clock_out: entry.clockOut,
+      hours: entry.hours,
+      status: 'pending',
+      notes: entry.notes || null,
+    }).select().single();
+    if (!error && data) {
+      setHistory((p) => [mapRow(data), ...p]);
+    }
+  }, []);
+
   const onAddSite = async (siteData: any) => {
     const { data, error } = await supabase.from('job_sites').insert(siteData).select().single();
     if (!error && data) {
@@ -1439,7 +1618,7 @@ export default function App() {
         {page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} onClockIn={onClockIn} onClockOut={onClockOut} history={history} />}
         {page === 1 && <PhotoPage sites={sites} />}
         {page === 2 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {page === 3 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {page === 3 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} onCreateEntry={onCreateEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
         {page === 4 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
       </div>
     </div>
