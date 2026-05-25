@@ -34,7 +34,7 @@ const INITIAL_SITES = [
   { id: 2, name: "Navaho", address: "8 Deerfield Dr, Ottawa, ON", lat: 45.3559, lng: -75.7520, radius: 359, active: true },
   { id: 3, name: "Skyline", address: "42 Northview Rd, Ottawa, ON", lat: 45.3629, lng: -75.7296, radius: 359, active: true },
   { id: 4, name: "Meadowlands", address: "1242 Meadowlands Dr E, Ottawa, ON", lat: 45.35909125246288, lng: -75.72347435767033, radius: 1000, active: true },
-  { id: 5, name: "Craig Henry", address: "269E Craig Henry Dr, Ottawa, ON", lat: 45.33510047434069, lng: -75.76491428943284, radius: 500, active: true },
+  { id: 5, name: "Craig Henry", address: "269E Craig Henry Dr, Ottawa, ON", lat: 45.33510047434069, lng: -75.76491428943284, radius: 550, active: true },
   { id: 6, name: "Walkley", address: "550 Reardon Pvt, Ottawa, ON", lat: 45.3758, lng: -75.6483, radius: 359, active: true },
   { id: 7, name: "Beaconwood", address: "2012 Beaconwood Dr, Ottawa, ON", lat: 45.4474, lng: -75.5971, radius: 359, active: true },
   { id: 8, name: "Forestview", address: "651 Woodcliffe Pvt, Ottawa, ON", lat: 45.4619, lng: -75.5386, radius: 359, active: true },
