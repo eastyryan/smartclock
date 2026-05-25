@@ -46,6 +46,9 @@ const INITIAL_SITES = [
 
 const FENCE_RADIUS = 359;
 
+// Separates the manager's typed reason from the auto-generated change summary in `notes`.
+const EDIT_SUMMARY_MARK = "\n↳ ";
+
 function mapRow(row: any) {
   return {
     id: row.id,
@@ -362,7 +365,7 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
                     {h.notes && (
                       <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", gap: 8, alignItems: "flex-start" }}>
                         <span style={{ fontSize: 14 }}>✏️</span>
-                        <p style={{ color: "#78350f", margin: 0, fontSize: 12, lineHeight: 1.4 }}>
+                        <p style={{ color: "#78350f", margin: 0, fontSize: 12, lineHeight: 1.4, whiteSpace: "pre-wrap" as const }}>
                           <strong>Manager note:</strong> {h.notes}
                         </p>
                       </div>
@@ -704,6 +707,7 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
 function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAuth, setManagerAuth }: any) {
   const [selPeriod, setSelPeriod] = useState("current");
   const [editing, setEditing] = useState<any>(null);
+  const [editErr, setEditErr] = useState("");
   const [overrideMgr, setOverrideMgr] = useState<Record<string, string>>({});
 
   if (!managerAuth) return <PinEntry title="Pay Period History" subtitle="Manager access required" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />;
@@ -910,6 +914,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
     const ci = new Date(h.clockIn);
     const co = new Date(h.clockOut);
     const pad = (n: number) => String(n).padStart(2, '0');
+    setEditErr("");
     setEditing({
       id: h.id,
       date: ci.getFullYear() + '-' + pad(ci.getMonth() + 1) + '-' + pad(ci.getDate()),
@@ -918,27 +923,51 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
       siteId: h.siteId,
       siteName: h.site,
       manager: h.manager,
-      notes: h.notes || '',
+      // Show only the manager's reason in the box; the auto change-summary is regenerated on save.
+      notes: (h.notes || '').split(EDIT_SUMMARY_MARK)[0],
       employee: h.employee,
+      // Originals captured so we can describe exactly what changed.
+      origClockIn: h.clockIn,
+      origClockOut: h.clockOut,
+      origHours: h.hours,
+      origSite: h.site,
+      origManager: h.manager,
     });
   };
 
   const saveEdit = async () => {
     if (!editing) return;
+    const reason = (editing.notes || '').trim();
+    if (!reason) { setEditErr("Please enter a reason for this edit so the employee knows why."); return; }
+
     const newCi = new Date(editing.date + 'T' + editing.ci + ':00').toISOString();
     const newCo = new Date(editing.date + 'T' + editing.co + ':00').toISOString();
     const newHours = calcHours(newCi, newCo);
     const site = sites.find((s: any) => s.id === Number(editing.siteId));
+    const newSiteName = site ? site.name : editing.siteName;
+
+    // Describe exactly what changed vs. the values before the edit.
+    const changes: string[] = [];
+    if (Number(editing.origHours) !== newHours) changes.push(`${Number(editing.origHours).toFixed(2)}h → ${newHours.toFixed(2)}h`);
+    if (editing.origClockIn !== newCi) changes.push(`in ${formatTime(editing.origClockIn)} → ${formatTime(newCi)}`);
+    if (editing.origClockOut !== newCo) changes.push(`out ${formatTime(editing.origClockOut)} → ${formatTime(newCo)}`);
+    if (editing.origSite !== newSiteName) changes.push(`site ${editing.origSite} → ${newSiteName}`);
+    if (editing.origManager !== editing.manager) changes.push(`mgr ${editing.origManager} → ${editing.manager}`);
+
+    const summary = changes.length ? `Edited by ${editing.manager} on ${formatDate(newCi)}: ${changes.join(', ')}` : '';
+    const composedNotes = summary ? `${reason}${EDIT_SUMMARY_MARK}${summary}` : reason;
+
     await onEditEntry(editing.id, {
       clockIn: newCi,
       clockOut: newCo,
       hours: newHours,
-      site: site ? site.name : editing.siteName,
+      site: newSiteName,
       siteId: Number(editing.siteId),
       manager: editing.manager,
-      notes: editing.notes,
+      notes: composedNotes,
     });
     setEditing(null);
+    setEditErr("");
   };
 
   const liveHours = editing ? (() => {
@@ -1032,12 +1061,18 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
                 {h.notes && (
                   <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginBottom: canAct ? 14 : 0, display: "flex", gap: 8, alignItems: "flex-start" }}>
                     <span style={{ fontSize: 14 }}>✏️</span>
-                    <p style={{ color: "#78350f", margin: 0, fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>
+                    <p style={{ color: "#78350f", margin: 0, fontSize: 13, fontWeight: 500, lineHeight: 1.4, whiteSpace: "pre-wrap" as const }}>
                       <strong>Manager note:</strong> {h.notes}
                     </p>
                   </div>
                 )}
                 {canAct && (
+                  <>
+                  {h.status === "edited" && (
+                    <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 600, color: "#7c3aed" }}>
+                      This shift was edited — approve or reject to finalize it.
+                    </p>
+                  )}
                   <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" as const }}>
                     <select
                       value={getManager(h)}
@@ -1065,6 +1100,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
                       <span style={{ fontSize: 14 }}>✎</span> Edit
                     </button>
                   </div>
+                  </>
                 )}
               </div>
             );
@@ -1073,7 +1109,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
       )}
 
       {/* Edit Modal */}
-      <Modal open={!!editing} onClose={() => setEditing(null)}>
+      <Modal open={!!editing} onClose={() => { setEditing(null); setEditErr(""); }}>
         {editing && (
           <>
             <h3 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>Edit Shift</h3>
@@ -1141,19 +1177,20 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, managerAu
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Notes</label>
+              <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Reason for Edit <span style={{ color: "#dc2626" }}>*</span></label>
               <textarea
                 value={editing.notes}
-                onChange={(e) => setEditing((p: any) => ({ ...p, notes: e.target.value }))}
-                placeholder="Reason for edit (optional)..."
+                onChange={(e) => { setEditing((p: any) => ({ ...p, notes: e.target.value })); if (editErr) setEditErr(""); }}
+                placeholder="Why are you editing this shift? The employee will see this."
                 rows={3}
-                style={{ ...S.input, resize: "vertical" as const, fontFamily: "inherit" }}
+                style={{ ...S.input, resize: "vertical" as const, fontFamily: "inherit", borderColor: editErr ? "#fca5a5" : (S.input.border as string) }}
               />
+              {editErr && <p style={{ color: "#dc2626", fontSize: 12, margin: "6px 0 0", fontWeight: 500 }}>{editErr}</p>}
             </div>
 
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 18 }}>
               <p style={{ margin: 0, color: "#b45309", fontSize: 12, fontWeight: 600 }}>
-                ✏️ Manager edit — changes are saved immediately to the database.
+                ✏️ Saving marks this shift <strong>Edited</strong> — approve or reject it afterward to finalize. The reason and what changed are shown to the employee.
               </p>
             </div>
 
