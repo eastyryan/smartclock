@@ -40,6 +40,8 @@ const INITIAL_SITES = [
   { id: 8, name: "Forestview", address: "651 Woodcliffe Pvt, Ottawa, ON", lat: 45.4619, lng: -75.5386, radius: 359, active: true },
   { id: 9, name: "Aspenview", address: "1628 Teakdale Ave, Ottawa, ON", lat: 45.4517, lng: -75.5265, radius: 359, active: true },
   { id: 10, name: "Castle Hill", address: "1000 Castle Hill Cres, Ottawa, ON", lat: 45.3696, lng: -75.7454, radius: 359, active: true },
+  { id: 11, name: "Jubilee", address: "24 Rutlege St, Ottawa, ON", lat: 45.27937109543332, lng: -75.7140484165026, radius: 359, active: true },
+  { id: 12, name: "Timberline", address: "25 Alpenglow Private, Ottawa, ON", lat: 45.27572462629332, lng: -75.71053090588975, radius: 359, active: true },
 ];
 
 const FENCE_RADIUS = 359;
