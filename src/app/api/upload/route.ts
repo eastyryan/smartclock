@@ -54,30 +54,39 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const siteName = formData.get('siteName');
     const employeeName = formData.get('employeeName');
+    // Optional overrides used by the End-of-Day broken/damaged flow.
+    const folderNameRaw = formData.get('folderName');
+    const filenameBaseRaw = formData.get('filenameBase');
+    const folderName = typeof folderNameRaw === 'string' && folderNameRaw ? folderNameRaw : (typeof siteName === 'string' ? siteName : '');
+    const filenameBase = typeof filenameBaseRaw === 'string' && filenameBaseRaw ? filenameBaseRaw : null;
     const files = formData.getAll('files').filter((f): f is File => f instanceof File);
     const notes = files.map((_, i) => {
       const v = formData.get('note_' + i);
       return typeof v === 'string' ? v.trim() : '';
     });
 
-    if (typeof siteName !== 'string' || typeof employeeName !== 'string' || files.length === 0) {
+    if (typeof employeeName !== 'string' || !folderName || files.length === 0) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const siteFolderId = await findOrCreateFolder(siteName, ROOT_FOLDER_ID);
+    const targetFolderId = await findOrCreateFolder(folderName, ROOT_FOLDER_ID);
 
     const today = new Date().toISOString().split('T')[0];
 
     const uploadedFiles = await Promise.all(files.map(async (file, i) => {
       const buffer = Buffer.from(await file.arrayBuffer());
       const ext = file.name.split('.').pop() || 'jpg';
-      const fileName = today + '_' + employeeName + '_photo_' + (i + 1) + '.' + ext;
+      const indexSuffix = files.length > 1 ? '_' + (i + 1) : '';
+      const baseName = filenameBase
+        ? filenameBase + indexSuffix
+        : today + '_' + employeeName + '_photo_' + (i + 1);
+      const fileName = baseName + '.' + ext;
       const note = notes[i];
 
       const uploaded = await drive.files.create({
         requestBody: {
           name: fileName,
-          parents: [siteFolderId],
+          parents: [targetFolderId],
           ...(note ? { description: note } : {}),
         },
         media: {
@@ -97,7 +106,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      folder: siteName,
+      folder: folderName,
       files: uploadedFiles,
       count: uploadedFiles.length,
     });

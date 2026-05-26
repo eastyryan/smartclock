@@ -158,10 +158,12 @@ async function compressImage(file: File, maxDim = 1920, quality = 0.85): Promise
   });
 }
 
-async function uploadToGoogleDrive(files: any[], siteName: string, employeeName: string) {
+async function uploadToGoogleDrive(files: any[], siteName: string, employeeName: string, opts?: { folderName?: string; filenameBase?: string }) {
   const formData = new FormData();
   formData.append('siteName', siteName);
   formData.append('employeeName', employeeName);
+  if (opts?.folderName) formData.append('folderName', opts.folderName);
+  if (opts?.filenameBase) formData.append('filenameBase', opts.filenameBase);
   files.forEach((f: any, i: number) => {
     formData.append('files', f.file);
     formData.append('note_' + i, f.note || '');
@@ -1470,9 +1472,24 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
   const [items, setItems] = useState<Record<string, boolean>>({});
   const [gas, setGas] = useState("");
   const [broken, setBroken] = useState("");
+  const [brokenPhotos, setBrokenPhotos] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState("");
+  const [photoStatus, setPhotoStatus] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+
+  const addPhotos = (files: FileList | null) => {
+    if (!files) return;
+    const arr = Array.from(files).map((f: File) => ({ name: f.name, url: URL.createObjectURL(f), file: f }));
+    setBrokenPhotos((p) => [...p, ...arr]);
+  };
+  const removePhoto = (i: number) => setBrokenPhotos((p) => {
+    const removed = p[i];
+    if (removed?.url) URL.revokeObjectURL(removed.url);
+    return p.filter((_, j) => j !== i);
+  });
 
   // Export is gated behind the manager PIN, independent of the employee sign-in.
   const [exportOpen, setExportOpen] = useState(false);
@@ -1483,12 +1500,16 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
   const periods = getRecentPayPeriods(12);
 
   const toggle = (key: string) => setItems((p) => ({ ...p, [key]: !p[key] }));
-  const resetForm = () => { setVehicle(""); setItems({}); setGas(""); setBroken(""); setDone(false); setErr(""); };
+  const resetForm = () => {
+    brokenPhotos.forEach((p) => p?.url && URL.revokeObjectURL(p.url));
+    setVehicle(""); setItems({}); setGas(""); setBroken(""); setBrokenPhotos([]); setDone(false); setErr(""); setPhotoStatus(null);
+  };
 
   const submit = async () => {
     if (!vehicle) { setErr("Please select a vehicle."); return; }
     if (!gas) { setErr("Please record how much gas is in the truck."); return; }
     setSubmitting(true);
+    setPhotoStatus(null);
     const res = await onSubmitChecklist({
       employee_name: emp.name,
       vehicle,
@@ -1501,8 +1522,26 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
       clean_blower: !!items.clean_blower,
       broken_notes: broken.trim() || null,
     });
+    if (res?.error) { setSubmitting(false); setErr("Couldn't save — ask your manager to finish setup. (" + res.error + ")"); return; }
+
+    // Checklist saved. Now upload any broken/damaged photos to Drive — failures don't block the saved checklist.
+    if (brokenPhotos.length > 0) {
+      try {
+        const compressed = await Promise.all(brokenPhotos.map(async (p) => ({ ...p, file: await compressImage(p.file) })));
+        const today = formatDateFile(new Date());
+        const safe = (s: string) => s.replace(/\//g, '-');
+        const filenameBase = safe(vehicle) + '_' + safe(emp.name) + '_' + today;
+        const result = await uploadToGoogleDrive(compressed, vehicle, emp.name, {
+          folderName: 'Broken/Damaged Equipment',
+          filenameBase,
+        });
+        if (result.error) setPhotoStatus({ type: 'err', text: result.error });
+        else setPhotoStatus({ type: 'ok', text: result.count + ' photo(s) uploaded to Broken/Damaged Equipment' });
+      } catch (e: any) {
+        setPhotoStatus({ type: 'err', text: e?.message || 'Photo upload failed' });
+      }
+    }
     setSubmitting(false);
-    if (res?.error) { setErr("Couldn't save — ask your manager to finish setup. (" + res.error + ")"); return; }
     setDone(true);
   };
 
@@ -1688,7 +1727,15 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
         <div style={{ ...S.card, textAlign: "center" as const, padding: 36 }}>
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 26, color: "#fff" }}>✓</div>
           <h3 style={{ color: "#1e293b", margin: "0 0 6px", fontSize: 20 }}>Checklist submitted</h3>
-          <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 22px" }}>{emp.name} · {vehicle}</p>
+          <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 14px" }}>{emp.name} · {vehicle}</p>
+          {photoStatus && (
+            <div style={{ background: photoStatus.type === 'ok' ? '#f0fdf4' : '#fef2f2', border: '1px solid ' + (photoStatus.type === 'ok' ? '#bbf7d0' : '#fecaca'), borderRadius: 10, padding: '10px 14px', margin: '0 auto 18px', display: 'inline-block', maxWidth: 480 }}>
+              <p style={{ margin: 0, color: photoStatus.type === 'ok' ? '#15803d' : '#dc2626', fontSize: 13, fontWeight: 600 }}>
+                {photoStatus.type === 'ok' ? '✓ ' : '⚠ '}{photoStatus.text}
+              </p>
+            </div>
+          )}
+          {!photoStatus && <div style={{ height: 8 }} />}
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" as const }}>
             <Btn variant="success" onClick={resetForm}>Submit Another Vehicle</Btn>
             <Btn variant="ghost" onClick={() => { resetForm(); setEmp(null); }}>Done</Btn>
@@ -1728,6 +1775,39 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
           <textarea value={broken} onChange={(e) => setBroken(e.target.value)} rows={3}
             placeholder="Anything broken or damaged? Leave blank if all good."
             style={{ ...S.input, resize: "vertical" as const, fontFamily: "inherit" }} />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <label style={S.label}>Photos of broken / damaged equipment (optional)</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <button type="button" onClick={() => cameraRef.current?.click()}
+              style={{ padding: "14px 10px", borderRadius: 12, border: "2px dashed #d1d5db", background: "#fafbfc", cursor: "pointer", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 22 }}>📷</span>
+              <span style={{ color: "#1e293b", fontSize: 13, fontWeight: 600 }}>Take Photo</span>
+            </button>
+            <button type="button" onClick={() => galleryRef.current?.click()}
+              style={{ padding: "14px 10px", borderRadius: 12, border: "2px dashed #d1d5db", background: "#fafbfc", cursor: "pointer", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 22 }}>🖼️</span>
+              <span style={{ color: "#1e293b", fontSize: 13, fontWeight: 600 }}>Choose from Gallery</span>
+            </button>
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { addPhotos(e.target.files); if (cameraRef.current) cameraRef.current.value = ""; }} />
+            <input ref={galleryRef} type="file" accept="image/*,.heic,.heif" multiple hidden onChange={(e) => { addPhotos(e.target.files); if (galleryRef.current) galleryRef.current.value = ""; }} />
+          </div>
+          {brokenPhotos.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
+              {brokenPhotos.map((p: any, i: number) => (
+                <div key={i} style={{ position: "relative" as const, borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", aspectRatio: "1" }}>
+                  <img src={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <button type="button" onClick={() => removePhoto(i)}
+                    style={{ position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {brokenPhotos.length > 0 && vehicle && (
+            <p style={{ color: "#94a3b8", margin: "8px 0 0", fontSize: 11 }}>
+              Will save to <strong style={{ color: "#475569" }}>Broken/Damaged Equipment/</strong> as <strong style={{ color: "#475569" }}>{vehicle.replace(/\//g, "-")}_{emp.name.replace(/\//g, "-")}_{formatDateFile(new Date())}.jpg</strong>
+            </p>
+          )}
         </div>
       </div>
 
