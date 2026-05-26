@@ -49,6 +49,27 @@ const FENCE_RADIUS = 359;
 // Separates the manager's typed reason from the auto-generated change summary in `notes`.
 const EDIT_SUMMARY_MARK = "\n↳ ";
 
+const VEHICLES = [
+  "GMC Truck (with Dump)",
+  "Ramptruck",
+  "2019 Cubevan (Orleans Crew)",
+  "2020 Cubevan (Craig Henry Crew)",
+];
+
+const GAS_LEVELS = ["Empty", "¼", "½", "¾", "Full"];
+
+// End-of-day checklist items. `key` maps to the eod_checklists DB column.
+const EOD_TRUCK_ITEMS = [
+  { key: "no_trash", label: "No trash in trucks (including work apparel)" },
+  { key: "interior_wipe", label: "Truck interiors wiped down (seats, doors, dashboard)" },
+  { key: "bed_blown", label: "Truck bed blown out (debris removed inside/bed)" },
+];
+const EOD_EQUIP_ITEMS = [
+  { key: "clean_mower", label: "Clean mower (no grass in bag / blow underneath deck)" },
+  { key: "clean_weedwacker", label: "Clean weedwacker" },
+  { key: "clean_blower", label: "Clean blower" },
+];
+
 function mapRow(row: any) {
   return {
     id: row.id,
@@ -89,6 +110,25 @@ function getPayPeriod(date: Date) {
   return { label: mName + " 16-" + last + ", " + y, start: new Date(y, m, 16), end: new Date(y, m, last, 23, 59, 59) };
 }
 function getCurrentPayPeriod() { return getPayPeriod(new Date()); }
+
+function getRecentPayPeriods(count = 12) {
+  const result: Array<{ label: string; start: Date; end: Date }> = [];
+  const now = new Date();
+  let y = now.getFullYear(), m = now.getMonth(), isSecond = now.getDate() > 15;
+  for (let i = 0; i < count; i++) {
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const mName = new Date(y, m, 1).toLocaleString("en-US", { month: "short" });
+    if (isSecond) {
+      result.push({ label: mName + " 16-" + lastDay + ", " + y, start: new Date(y, m, 16), end: new Date(y, m, lastDay, 23, 59, 59) });
+      isSecond = false;
+    } else {
+      result.push({ label: mName + " 1-15, " + y, start: new Date(y, m, 1), end: new Date(y, m, 15, 23, 59, 59) });
+      if (m === 0) { m = 11; y -= 1; } else { m -= 1; }
+      isSecond = true;
+    }
+  }
+  return result;
+}
 
 async function compressImage(file: File, maxDim = 1920, quality = 0.85): Promise<File> {
   return new Promise((resolve) => {
@@ -1424,19 +1464,305 @@ function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, s
   );
 }
 
+function EODChecklist({ checklists, onSubmitChecklist }: any) {
+  const [emp, setEmp] = useState<any>(null);
+  const [vehicle, setVehicle] = useState("");
+  const [items, setItems] = useState<Record<string, boolean>>({});
+  const [gas, setGas] = useState("");
+  const [broken, setBroken] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Export is gated behind the manager PIN, independent of the employee sign-in.
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportAuthed, setExportAuthed] = useState(false);
+  const [mgrPin, setMgrPin] = useState("");
+  const [mgrErr, setMgrErr] = useState("");
+  const [periodIdx, setPeriodIdx] = useState(0);
+  const periods = getRecentPayPeriods(12);
+
+  const toggle = (key: string) => setItems((p) => ({ ...p, [key]: !p[key] }));
+  const resetForm = () => { setVehicle(""); setItems({}); setGas(""); setBroken(""); setDone(false); setErr(""); };
+
+  const submit = async () => {
+    if (!vehicle) { setErr("Please select a vehicle."); return; }
+    if (!gas) { setErr("Please record how much gas is in the truck."); return; }
+    setSubmitting(true);
+    const res = await onSubmitChecklist({
+      employee_name: emp.name,
+      vehicle,
+      no_trash: !!items.no_trash,
+      interior_wipe: !!items.interior_wipe,
+      bed_blown: !!items.bed_blown,
+      gas_level: gas,
+      clean_mower: !!items.clean_mower,
+      clean_weedwacker: !!items.clean_weedwacker,
+      clean_blower: !!items.clean_blower,
+      broken_notes: broken.trim() || null,
+    });
+    setSubmitting(false);
+    if (res?.error) { setErr("Couldn't save — ask your manager to finish setup. (" + res.error + ")"); return; }
+    setDone(true);
+  };
+
+  const onMgrPin = (v: string) => {
+    setMgrErr("");
+    setMgrPin(v);
+    if (v.length === 4) {
+      if (v === MANAGER_PIN) { setExportAuthed(true); setMgrPin(""); }
+      else { setMgrErr("Incorrect manager PIN"); setMgrPin(""); }
+    }
+  };
+
+  const closeExport = () => { setExportOpen(false); setExportAuthed(false); setMgrPin(""); setMgrErr(""); };
+
+  const exportRows = () => {
+    const sel = periodIdx === -1 ? null : periods[periodIdx];
+    return (checklists || [])
+      .filter((c: any) => { if (!sel) return true; const d = new Date(c.created_at); return d >= sel.start && d <= sel.end; })
+      .slice()
+      .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  };
+
+  const exportExcel = async () => {
+    const rows = exportRows();
+    const HEADER_BLUE = "FF5B9BD5";
+    const DARK = "FF3A506B";
+    const ALT_BG = "FFF9FAFB";
+    const YES_GREEN = "FF15803D";
+    const NO_RED = "FFB91C1C";
+    const BORDER = "FFE5E7EB";
+    const yn = (b: any) => (b ? "Yes" : "No");
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Dean Ryans SmartClock";
+    wb.created = new Date();
+    const ws = wb.addWorksheet("EOD Checklist");
+    ws.columns = [
+      { header: "Date", key: "date", width: 14 },
+      { header: "Time", key: "time", width: 10 },
+      { header: "Employee", key: "employee", width: 22 },
+      { header: "Vehicle", key: "vehicle", width: 28 },
+      { header: "No Trash", key: "no_trash", width: 10 },
+      { header: "Interior Wiped", key: "interior_wipe", width: 14 },
+      { header: "Bed Blown", key: "bed_blown", width: 11 },
+      { header: "Gas Level", key: "gas_level", width: 11 },
+      { header: "Clean Mower", key: "clean_mower", width: 12 },
+      { header: "Clean Weedwacker", key: "clean_weedwacker", width: 16 },
+      { header: "Clean Blower", key: "clean_blower", width: 12 },
+      { header: "Broken / Damaged Notes", key: "broken_notes", width: 34 },
+    ];
+
+    const periodLabel = periodIdx === -1 ? "All Time" : periods[periodIdx].label;
+    ws.spliceRows(1, 0, ["Dean Ryans — End of Day Checklist — " + periodLabel]);
+    ws.mergeCells("A1:L1");
+    const title = ws.getCell("A1");
+    title.font = { bold: true, size: 15, color: { argb: "FFFFFFFF" } };
+    title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
+    title.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(1).height = 28;
+
+    const header = ws.getRow(2);
+    header.values = ["Date", "Time", "Employee", "Vehicle", "No Trash", "Interior Wiped", "Bed Blown", "Gas Level", "Clean Mower", "Clean Weedwacker", "Clean Blower", "Broken / Damaged Notes"];
+    header.eachCell((c) => {
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_BLUE } };
+      c.alignment = { horizontal: "center", vertical: "middle" };
+    });
+    header.height = 22;
+
+    const boolKeys = ["no_trash", "interior_wipe", "bed_blown", "clean_mower", "clean_weedwacker", "clean_blower"];
+    rows.forEach((c: any, idx: number) => {
+      const row = ws.addRow({
+        date: formatDate(c.created_at),
+        time: formatTime(c.created_at),
+        employee: c.employee_name,
+        vehicle: c.vehicle,
+        no_trash: yn(c.no_trash),
+        interior_wipe: yn(c.interior_wipe),
+        bed_blown: yn(c.bed_blown),
+        gas_level: c.gas_level || "",
+        clean_mower: yn(c.clean_mower),
+        clean_weedwacker: yn(c.clean_weedwacker),
+        clean_blower: yn(c.clean_blower),
+        broken_notes: c.broken_notes || "",
+      });
+      if (idx % 2 === 1) row.eachCell((cell) => { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ALT_BG } }; });
+      boolKeys.forEach((k) => {
+        const cell = row.getCell(k);
+        cell.alignment = { horizontal: "center" };
+        cell.font = { bold: true, color: { argb: cell.value === "Yes" ? YES_GREEN : NO_RED } };
+      });
+      row.getCell("gas_level").alignment = { horizontal: "center" };
+    });
+
+    ws.eachRow((row) => {
+      row.eachCell((c) => {
+        c.border = {
+          top: { style: "thin", color: { argb: BORDER } },
+          left: { style: "thin", color: { argb: BORDER } },
+          bottom: { style: "thin", color: { argb: BORDER } },
+          right: { style: "thin", color: { argb: BORDER } },
+        };
+      });
+    });
+
+    const filename = "eod_checklist_" + periodLabel.replace(/[^\w]+/g, "_") + ".xlsx";
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const checkRow = (it: { key: string; label: string }) => {
+    const on = !!items[it.key];
+    return (
+      <button key={it.key} type="button" onClick={() => toggle(it.key)}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 8, borderRadius: 10, cursor: "pointer", textAlign: "left" as const,
+          background: on ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (on ? "#bbf7d0" : "#e2e8f0") }}>
+        <span style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800,
+          background: on ? "#16a34a" : "#fff", border: "2px solid " + (on ? "#16a34a" : "#cbd5e1"), color: "#fff" }}>{on ? "✓" : ""}</span>
+        <span style={{ fontSize: 14, color: "#1e293b", fontWeight: 500 }}>{it.label}</span>
+      </button>
+    );
+  };
+
+  const header = (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 18 }}>
+      <div>
+        <h2 style={{ color: "#1e293b", margin: 0, fontSize: 24, fontWeight: 800 }}>End of Day Checklist</h2>
+        <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: 14 }}>Sign in and confirm each vehicle is cleaned and inspected.</p>
+      </div>
+      <Btn variant="outline" onClick={() => setExportOpen(true)} style={{ padding: "8px 16px", fontSize: 13, flexShrink: 0 }}>Export to Excel</Btn>
+    </div>
+  );
+
+  const exportModal = (
+    <Modal open={exportOpen} onClose={closeExport}>
+      {!exportAuthed ? (
+        <div style={{ textAlign: "center" as const }}>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #f59e0b, #d97706)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 22 }}>🔒</div>
+          <h3 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>Manager Export</h3>
+          <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 18 }}>Enter manager PIN to download checklist history</p>
+          <PinPad value={mgrPin} onChange={onMgrPin} />
+          {mgrErr && <p style={{ color: "#dc2626", fontSize: 13, margin: "12px 0 0", fontWeight: 500 }}>{mgrErr}</p>}
+        </div>
+      ) : (
+        <>
+          <h3 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>Export Checklist History</h3>
+          <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 18 }}>Choose a pay period to download.</p>
+          <div style={{ marginBottom: 14 }}>
+            <label style={S.label}>Pay Period</label>
+            <select value={periodIdx} onChange={(e) => setPeriodIdx(Number(e.target.value))} style={{ ...S.input, appearance: "none" as const }}>
+              {periods.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
+              <option value={-1}>All Time</option>
+            </select>
+          </div>
+          <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 16px" }}>{exportRows().length} checklist(s) in this period.</p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="success" onClick={exportExcel} disabled={exportRows().length === 0} style={{ flex: 1 }}>Download Excel</Btn>
+            <Btn variant="ghost" onClick={closeExport} style={{ flex: 1 }}>Close</Btn>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+
+  if (!emp) {
+    return (
+      <div style={{ maxWidth: 640, margin: "0 auto", width: "100%" }}>
+        {header}
+        <PinEntry title="End of Day Checklist" subtitle="Verify your identity to complete the checklist" onVerify={setEmp} employees={EMPLOYEES} />
+        {exportModal}
+      </div>
+    );
+  }
+
+  if (done) {
+    return (
+      <div style={{ maxWidth: 640, margin: "0 auto", width: "100%" }}>
+        {header}
+        <div style={{ ...S.card, textAlign: "center" as const, padding: 36 }}>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 26, color: "#fff" }}>✓</div>
+          <h3 style={{ color: "#1e293b", margin: "0 0 6px", fontSize: 20 }}>Checklist submitted</h3>
+          <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 22px" }}>{emp.name} · {vehicle}</p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" as const }}>
+            <Btn variant="success" onClick={resetForm}>Submit Another Vehicle</Btn>
+            <Btn variant="ghost" onClick={() => { resetForm(); setEmp(null); }}>Done</Btn>
+          </div>
+        </div>
+        {exportModal}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 640, margin: "0 auto", width: "100%" }}>
+      {header}
+      <div style={{ ...S.card, marginBottom: 12, display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg, #dc2626, #b91c1c)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700 }}>{emp.name[0]}</div>
+        <div style={{ flex: 1 }}><p style={{ color: "#1e293b", margin: 0, fontWeight: 600 }}>{emp.name}</p><p style={{ color: "#94a3b8", margin: 0, fontSize: 12 }}>Completing end of day checklist</p></div>
+        <button onClick={() => { resetForm(); setEmp(null); }} style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 12px", color: "#475569", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Switch user</button>
+      </div>
+
+      <div style={{ ...S.card, marginBottom: 12 }}>
+        <Select label="Vehicle" placeholder="Select vehicle" value={vehicle} onChange={(e: any) => setVehicle(e.target.value)}
+          options={VEHICLES.map((v) => ({ value: v, label: v }))} />
+      </div>
+
+      <div style={{ ...S.card, marginBottom: 12 }}>
+        <h3 style={{ color: "#1e293b", margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>🚚 Truck Inspection</h3>
+        {EOD_TRUCK_ITEMS.map(checkRow)}
+        <div style={{ marginTop: 6 }}>
+          <Select label="Check if truck needs gas — how much is in the truck?" placeholder="Select gas level" value={gas} onChange={(e: any) => setGas(e.target.value)}
+            options={GAS_LEVELS.map((g) => ({ value: g, label: g }))} />
+        </div>
+      </div>
+
+      <div style={{ ...S.card, marginBottom: 12 }}>
+        <h3 style={{ color: "#1e293b", margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>🛠️ Equipment Inspection</h3>
+        {EOD_EQUIP_ITEMS.map(checkRow)}
+        <div style={{ marginTop: 6 }}>
+          <label style={S.label}>Make note of broken / damaged equipment</label>
+          <textarea value={broken} onChange={(e) => setBroken(e.target.value)} rows={3}
+            placeholder="Anything broken or damaged? Leave blank if all good."
+            style={{ ...S.input, resize: "vertical" as const, fontFamily: "inherit" }} />
+        </div>
+      </div>
+
+      {err && (
+        <div style={{ ...S.card, borderLeft: "4px solid #dc2626", marginBottom: 12, padding: "12px 16px" }}>
+          <p style={{ color: "#dc2626", margin: 0, fontSize: 13, fontWeight: 600 }}>{err}</p>
+        </div>
+      )}
+
+      <Btn variant="success" onClick={submit} disabled={submitting} style={{ width: "100%" }}>
+        {submitting ? "Submitting..." : "Submit Checklist"}
+      </Btn>
+      {exportModal}
+    </div>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState(0);
   const [sites, setSites] = useState<any[]>([]);
   const [activeClocks, setActiveClocks] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
+  const [eodChecklists, setEodChecklists] = useState<any[]>([]);
   const [managerAuth, setManagerAuth] = useState(false);
   const [dbLoading, setDbLoading] = useState(true);
 
   const loadData = useCallback(async () => {
-    const [activeRes, completedRes, sitesRes] = await Promise.all([
+    const [activeRes, completedRes, sitesRes, eodRes] = await Promise.all([
       supabase.from('clock_events').select('*').is('clock_out', null),
       supabase.from('clock_events').select('*').not('clock_out', 'is', null).order('clock_in', { ascending: false }),
       supabase.from('job_sites').select('*').order('id', { ascending: true }),
+      // eod_checklists may not exist yet (needs the one-time SQL); errors are ignored so the rest of the app still loads.
+      supabase.from('eod_checklists').select('*').order('created_at', { ascending: false }),
     ]);
 
     if (activeRes.data) {
@@ -1444,6 +1770,9 @@ export default function App() {
     }
     if (completedRes.data) {
       setHistory(completedRes.data.map(mapRow));
+    }
+    if (eodRes.data) {
+      setEodChecklists(eodRes.data);
     }
     if (sitesRes.data) {
       if (sitesRes.data.length === 0) {
@@ -1463,12 +1792,21 @@ export default function App() {
       .channel('db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clock_events' }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'job_sites' }, loadData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'eod_checklists' }, loadData)
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [loadData]);
 
-  useEffect(() => { if (page < 2) setManagerAuth(false); }, [page]);
+  useEffect(() => { if (page < 3) setManagerAuth(false); }, [page]);
+
+  const onSubmitChecklist = async (payload: any) => {
+    const { data, error } = await supabase.from('eod_checklists').insert(payload).select().single();
+    if (!error && data) {
+      setEodChecklists((p) => [data, ...p]);
+    }
+    return { error: error?.message };
+  };
 
   const onClockIn = async (empName: string, site: any, manager: string) => {
     const now = new Date().toISOString();
@@ -1575,6 +1913,7 @@ export default function App() {
   const tabs = [
     { icon: "Clock", label: "Clock In/Out", mgr: false },
     { icon: "Camera", label: "Photos", mgr: false },
+    { icon: "Check", label: "End of Day", mgr: false },
     { icon: "Chart", label: "Active Board", mgr: true },
     { icon: "List", label: "Pay Period", mgr: true },
     { icon: "Pin", label: "Job Sites", mgr: true },
@@ -1617,9 +1956,10 @@ export default function App() {
       <div style={{ padding: "24px 24px 40px", width: "100%", boxSizing: "border-box" as const }}>
         {page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} onClockIn={onClockIn} onClockOut={onClockOut} history={history} />}
         {page === 1 && <PhotoPage sites={sites} />}
-        {page === 2 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {page === 3 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} onCreateEntry={onCreateEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {page === 4 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {page === 2 && <EODChecklist checklists={eodChecklists} onSubmitChecklist={onSubmitChecklist} />}
+        {page === 3 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {page === 4 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} onCreateEntry={onCreateEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {page === 5 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
       </div>
     </div>
   );
