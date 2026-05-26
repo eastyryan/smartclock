@@ -1715,11 +1715,9 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
 
       <div style={{ ...S.card, marginBottom: 12 }}>
         <h3 style={{ color: "#1e293b", margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>🚚 Truck Inspection</h3>
+        <Select label="Check if truck needs gas — how much is in the truck?" placeholder="Select gas level" value={gas} onChange={(e: any) => setGas(e.target.value)}
+          options={GAS_LEVELS.map((g) => ({ value: g, label: g }))} />
         {EOD_TRUCK_ITEMS.map(checkRow)}
-        <div style={{ marginTop: 6 }}>
-          <Select label="Check if truck needs gas — how much is in the truck?" placeholder="Select gas level" value={gas} onChange={(e: any) => setGas(e.target.value)}
-            options={GAS_LEVELS.map((g) => ({ value: g, label: g }))} />
-        </div>
       </div>
 
       <div style={{ ...S.card, marginBottom: 12 }}>
