@@ -747,7 +747,8 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
 }
 
 function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateEntry, managerAuth, setManagerAuth }: any) {
-  const [selPeriod, setSelPeriod] = useState("current");
+  // periodIdx: 0..N-1 indexes into `periods` (0 = current pay period). -1 = All Time.
+  const [periodIdx, setPeriodIdx] = useState(0);
   const [editing, setEditing] = useState<any>(null);
   const [editErr, setEditErr] = useState("");
   const [creating, setCreating] = useState<any>(null);
@@ -756,7 +757,10 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
   if (!managerAuth) return <PinEntry title="Pay Period History" subtitle="Manager access required" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />;
 
   const currentPP = getCurrentPayPeriod();
-  const filtered = selPeriod === "all" ? history : history.filter((h: any) => { const d = new Date(h.clockIn); return d >= currentPP.start && d <= currentPP.end; });
+  const periods = getRecentPayPeriods(12);
+  const selPP = periodIdx === -1 ? null : periods[periodIdx];
+  const periodLabel = selPP ? selPP.label : "All Time";
+  const filtered = !selPP ? history : history.filter((h: any) => { const d = new Date(h.clockIn); return d >= selPP.start && d <= selPP.end; });
 
   const getManager = (h: any) => overrideMgr[h.id] ?? h.manager;
   const doApprove = async (h: any) => {
@@ -796,7 +800,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
 
     // Title row
     summary.spliceRows(1, 0, [
-      "Dean Ryans Pay Period — " + (selPeriod === "all" ? "All Time" : currentPP.label),
+      "Dean Ryans Pay Period — " + periodLabel,
     ]);
     summary.mergeCells("A1:F1");
     const title = summary.getCell("A1");
@@ -944,7 +948,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
       });
     });
 
-    const filename = "payperiod_" + (selPeriod === "all" ? "all" : currentPP.label.replace(/[^\w]+/g, "_")) + ".xlsx";
+    const filename = "payperiod_" + (selPP ? selPP.label.replace(/[^\w]+/g, "_") : "all") + ".xlsx";
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url = URL.createObjectURL(blob);
@@ -1083,9 +1087,9 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
           <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: 14 }}>Current: <strong style={{ color: "#475569" }}>{currentPP.label}</strong></p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
-          <select value={selPeriod} onChange={(e) => setSelPeriod(e.target.value)} style={{ ...S.input, width: "auto", padding: "8px 12px", fontSize: 13 }}>
-            <option value="current">{currentPP.label}</option>
-            <option value="all">All Time</option>
+          <select value={periodIdx} onChange={(e) => setPeriodIdx(Number(e.target.value))} style={{ ...S.input, width: "auto", padding: "8px 12px", fontSize: 13 }}>
+            {periods.map((p, i) => <option key={i} value={i}>{p.label}{i === 0 ? " (current)" : ""}</option>)}
+            <option value={-1}>All Time</option>
           </select>
           <Btn onClick={openCreate} style={{ padding: "8px 16px", fontSize: 13 }}>+ Create Time Card</Btn>
           <Btn variant="outline" onClick={exportExcel} disabled={filtered.length === 0} style={{ padding: "8px 16px", fontSize: 13 }}>Export Excel</Btn>
