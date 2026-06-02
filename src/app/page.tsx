@@ -635,7 +635,7 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
   const activeMap: Record<string, any> = {};
   activeClocks.forEach((c: any) => { activeMap[c.employee] = c; });
 
-  const recentCards = [...history].reverse().slice(0, 10);
+  const recentCards = history.slice(0, 10);
   const DARK_GREEN = "#1a3620";
   const ACCENT = "#22c55e";
 
@@ -749,6 +749,7 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
 function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateEntry, managerAuth, setManagerAuth }: any) {
   // periodIdx: 0..N-1 indexes into `periods` (0 = current pay period). -1 = All Time.
   const [periodIdx, setPeriodIdx] = useState(0);
+  const [selEmployee, setSelEmployee] = useState("all");
   const [editing, setEditing] = useState<any>(null);
   const [editErr, setEditErr] = useState("");
   const [creating, setCreating] = useState<any>(null);
@@ -760,7 +761,13 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
   const periods = getRecentPayPeriods(12);
   const selPP = periodIdx === -1 ? null : periods[periodIdx];
   const periodLabel = selPP ? selPP.label : "All Time";
-  const filtered = !selPP ? history : history.filter((h: any) => { const d = new Date(h.clockIn); return d >= selPP.start && d <= selPP.end; });
+  // Employee list is derived from all history so the dropdown stays stable when the period changes.
+  const employeeOptions = Array.from(new Set(history.map((h: any) => h.employee).filter(Boolean))).sort() as string[];
+  const filtered = history.filter((h: any) => {
+    if (selPP) { const d = new Date(h.clockIn); if (d < selPP.start || d > selPP.end) return false; }
+    if (selEmployee !== "all" && h.employee !== selEmployee) return false;
+    return true;
+  });
 
   const getManager = (h: any) => overrideMgr[h.id] ?? h.manager;
   const doApprove = async (h: any) => {
@@ -800,7 +807,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
 
     // Title row
     summary.spliceRows(1, 0, [
-      "Dean Ryans Pay Period — " + periodLabel,
+      "Dean Ryans Pay Period — " + periodLabel + (selEmployee !== "all" ? " — " + selEmployee : ""),
     ]);
     summary.mergeCells("A1:F1");
     const title = summary.getCell("A1");
@@ -948,7 +955,8 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
       });
     });
 
-    const filename = "payperiod_" + (selPP ? selPP.label.replace(/[^\w]+/g, "_") : "all") + ".xlsx";
+    const empSuffix = selEmployee !== "all" ? "_" + selEmployee.replace(/[^\w]+/g, "_") : "";
+    const filename = "payperiod_" + (selPP ? selPP.label.replace(/[^\w]+/g, "_") : "all") + empSuffix + ".xlsx";
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url = URL.createObjectURL(blob);
@@ -1090,6 +1098,10 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
           <select value={periodIdx} onChange={(e) => setPeriodIdx(Number(e.target.value))} style={{ ...S.input, width: "auto", padding: "8px 12px", fontSize: 13 }}>
             {periods.map((p, i) => <option key={i} value={i}>{p.label}{i === 0 ? " (current)" : ""}</option>)}
             <option value={-1}>All Time</option>
+          </select>
+          <select value={selEmployee} onChange={(e) => setSelEmployee(e.target.value)} style={{ ...S.input, width: "auto", padding: "8px 12px", fontSize: 13 }}>
+            <option value="all">All Employees</option>
+            {employeeOptions.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
           <Btn onClick={openCreate} style={{ padding: "8px 16px", fontSize: 13 }}>+ Create Time Card</Btn>
           <Btn variant="outline" onClick={exportExcel} disabled={filtered.length === 0} style={{ padding: "8px 16px", fontSize: 13 }}>Export Excel</Btn>
