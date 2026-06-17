@@ -328,7 +328,6 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
 function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any) {
   const [emp, setEmp] = useState<any>(null);
   const [site, setSite] = useState("");
-  const [manager, setManager] = useState("");
   const [geoStatus, setGeoStatus] = useState<string | null>(null);
   const [msg, setMsg] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -352,9 +351,9 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
   const clockIn = async () => {
     setLoading(true);
     const s = sites.find((x: any) => x.id === Number(site));
-    await onClockIn(emp.name, s, manager);
+    await onClockIn(emp.name, s, "");
     setMsg({ type: "success", text: emp.name + " clocked in at " + s.name });
-    setTimeout(() => { setLoading(false); setEmp(null); setSite(""); setManager(""); setGeoStatus(null); setMsg(null); }, 2500);
+    setTimeout(() => { setLoading(false); setEmp(null); setSite(""); setGeoStatus(null); setMsg(null); }, 2500);
   };
 
   const clockOut = async () => {
@@ -403,7 +402,7 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
                     </div>
                     <div style={{ display: "flex", gap: 14, flexWrap: "wrap" as const }}>
                       <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>📍 {h.site}</span>
-                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>👤 {h.manager}</span>
+                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>👤 {h.manager || "Unassigned"}</span>
                     </div>
                     {h.notes && (
                       <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", gap: 8, alignItems: "flex-start" }}>
@@ -456,9 +455,6 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
                   <Select label="Job Site" placeholder="Select job site" value={site}
                     onChange={(e: any) => { setSite(e.target.value); checkGeo(e.target.value); }}
                     options={activeSites.map((s: any) => ({ value: s.id, label: s.name }))} />
-                  <Select label="Manager" placeholder="Select manager" value={manager}
-                    onChange={(e: any) => setManager(e.target.value)}
-                    options={MANAGERS.map((m: string) => ({ value: m, label: m }))} />
                   {geoStatus && (
                     <div style={{ padding: 12, borderRadius: 10, marginBottom: 14, background: geoStatus === "verified" ? "#f0fdf4" : geoStatus === "checking" ? "#f8fafc" : "#fef2f2", border: "1px solid " + (geoStatus === "verified" ? "#bbf7d0" : geoStatus === "checking" ? "#e2e8f0" : "#fecaca") }}>
                       <p style={{ color: geoStatus === "verified" ? "#15803d" : geoStatus === "checking" ? "#64748b" : "#dc2626", margin: 0, fontSize: 13, fontWeight: 500 }}>
@@ -470,7 +466,7 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
                       </p>
                     </div>
                   )}
-                  <Btn variant="success" onClick={clockIn} disabled={!site || !manager || geoStatus !== "verified" || loading} style={{ width: "100%" }}>Clock In</Btn>
+                  <Btn variant="success" onClick={clockIn} disabled={!site || geoStatus !== "verified" || loading} style={{ width: "100%" }}>Clock In</Btn>
                 </>
               )}
             </div>
@@ -726,7 +722,7 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
                       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" as const }}>
                         <span style={{ fontSize: 12, color: "#64748b" }}>🕐 30min</span>
                         <span style={{ fontSize: 12, color: "#64748b" }}>📍 {h.site}</span>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>👤 {h.manager}</span>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>👤 {h.manager || "Unassigned"}</span>
                         {h.status === "pending" && <span style={{ fontSize: 12 }}>⚠️</span>}
                       </div>
                     </div>
@@ -1160,7 +1156,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                   </span>
                   <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 14 }}>👤</span>
-                    {h.manager}
+                    {h.manager || "Unassigned"}
                   </span>
                 </div>
                 {h.notes && (
@@ -1183,6 +1179,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                       onChange={(e) => setOverrideMgr((p) => ({ ...p, [h.id]: e.target.value }))}
                       style={{ padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", color: "#1e293b", fontSize: 13, fontWeight: 600, minWidth: 130, cursor: "pointer" }}
                     >
+                      <option value="">Select manager…</option>
                       {MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
                   )}
@@ -1279,6 +1276,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                 onChange={(e) => setEditing((p: any) => ({ ...p, manager: e.target.value }))}
                 style={{ ...S.input, appearance: "none" as const }}
               >
+                <option value="">Select manager…</option>
                 {MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
