@@ -32,6 +32,7 @@ from (values
   ('Brandy Larabie', '5038'),
   ('Cameron Rice', '7261'),
   ('Carolina Landa', '4915'),
+  ('Dexter', '6058'),
   ('Easton Ryan', '8374'),
   ('Evariste Sindayizeruka', '2659'),
   ('Griffin Kay', '9123'),
