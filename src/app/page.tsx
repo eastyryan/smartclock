@@ -9,6 +9,7 @@ const EMPLOYEES = [
   { name: "Brandy Larabie", pin: "5038" },
   { name: "Cameron Rice", pin: "7261" },
   { name: "Carolina Landa", pin: "4915" },
+  { name: "Dexter", pin: "5926" },
   { name: "Easton Ryan", pin: "8374" },
   { name: "Evariste Sindayizeruka", pin: "2659" },
   { name: "Griffin Kay", pin: "9123" },
