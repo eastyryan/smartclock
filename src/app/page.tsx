@@ -23,6 +23,7 @@ const EMPLOYEES = [
   { name: "Moses Boateng", pin: "6347" },
   { name: "Satpal Singh", pin: "9058" },
   { name: "ShonDreya Smardon", pin: "4629" },
+  { name: "Tim Larkin", pin: "8627" },
   { name: "Tyrell Anderson", pin: "2813" },
   { name: "Vanessa Sciampacone", pin: "8041" },
   { name: "Will Kennedy", pin: "7492" },
