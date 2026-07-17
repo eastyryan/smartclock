@@ -372,6 +372,22 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
   if (showHistory) {
     const statusColor: any = { pending: "#f59e0b", approved: "#16a34a", rejected: "#dc2626", edited: "#7c3aed" };
     const totalHrs = myHistory.filter((h: any) => h.status !== "rejected").reduce((s: number, h: any) => s + (Number(h.hours) || 0), 0);
+
+    // Group time cards by pay period (myHistory is already newest-first)
+    const groups: Array<{ label: string; entries: any[]; hours: number; pending: number }> = [];
+    const groupByLabel: Record<string, (typeof groups)[number]> = {};
+    myHistory.forEach((h: any) => {
+      const label = getPayPeriod(new Date(h.clockIn)).label;
+      let g = groupByLabel[label];
+      if (!g) { g = { label, entries: [], hours: 0, pending: 0 }; groupByLabel[label] = g; groups.push(g); }
+      g.entries.push(h);
+      if (h.status !== "rejected") g.hours += Number(h.hours) || 0;
+      if (h.status === "pending" || h.status === "edited") g.pending += Number(h.hours) || 0;
+    });
+
+    const currentLabel = getCurrentPayPeriod().label;
+    const currentHrs = groupByLabel[currentLabel]?.hours || 0;
+
     return (
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", minHeight: "60vh" }}>
         <div style={{ maxWidth: 540, width: "100%" }}>
@@ -382,13 +398,35 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
               <p style={{ color: "#94a3b8", margin: 0, fontSize: 13 }}>{myHistory.length} time card(s) · {totalHrs.toFixed(1)}h total</p>
             </div>
           </div>
+
+          {myHistory.length > 0 && (
+            <div style={{ ...S.card, marginBottom: 16, background: "linear-gradient(135deg, #1a3620, #15291a)", border: "none" }}>
+              <p style={{ color: "#86efac", margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>THIS PAY PERIOD</p>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 6 }}>
+                <p style={{ color: "#fff", margin: 0, fontSize: 15, fontWeight: 600 }}>{currentLabel}</p>
+                <p style={{ color: "#22c55e", margin: 0, fontSize: 30, fontWeight: 800, lineHeight: 1 }}>{currentHrs.toFixed(2)}h</p>
+              </div>
+            </div>
+          )}
           {myHistory.length === 0 ? (
             <div style={{ ...S.card, textAlign: "center" as const, padding: 40 }}>
               <p style={{ color: "#94a3b8", margin: 0 }}>You don&apos;t have any time cards yet.</p>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column" as const, gap: 10 }}>
-              {myHistory.map((h: any) => {
+            <div style={{ display: "flex", flexDirection: "column" as const, gap: 22 }}>
+              {groups.map((g) => (
+                <div key={g.label}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, padding: "0 4px 8px", borderBottom: "1px solid #e2e8f0", marginBottom: 10 }}>
+                    <div>
+                      <p style={{ color: "#1e293b", margin: 0, fontWeight: 800, fontSize: 15 }}>{g.label}</p>
+                      <p style={{ color: "#94a3b8", margin: "2px 0 0", fontSize: 12 }}>
+                        {g.entries.length} card(s){g.pending > 0 ? " · " + g.pending.toFixed(2) + "h awaiting approval" : ""}
+                      </p>
+                    </div>
+                    <p style={{ color: "#16a34a", margin: 0, fontWeight: 800, fontSize: 20, whiteSpace: "nowrap" as const }}>{g.hours.toFixed(2)}h</p>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column" as const, gap: 10 }}>
+              {g.entries.map((h: any) => {
                 const sc = statusColor[h.status] || "#94a3b8";
                 return (
                   <div key={h.id} style={{ ...S.card, padding: 16 }}>
@@ -417,6 +455,9 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
                   </div>
                 );
               })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
           <Btn variant="ghost" onClick={() => setShowHistory(false)} style={{ width: "100%", marginTop: 14 }}>Back</Btn>
