@@ -350,11 +350,9 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
     if (h.status === "pending" || h.status === "edited") g.pending += Number(h.hours) || 0;
   });
 
-  // The clock screen always leads with the current period, even before any cards land in it
+  // Totals for the period in progress stay hidden from employees until it closes
   const currentPeriodLabel = getCurrentPayPeriod().label;
-  const periodRows = periodByLabel[currentPeriodLabel]
-    ? myPeriods
-    : [{ label: currentPeriodLabel, entries: [], hours: 0, pending: 0 }, ...myPeriods];
+  const periodRows = myPeriods.filter((g) => g.label !== currentPeriodLabel);
 
   const checkGeo = useCallback((siteId: string) => {
     if (!siteId) return;
@@ -405,16 +403,22 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column" as const, gap: 22 }}>
-              {myPeriods.map((g) => (
+              {myPeriods.map((g) => {
+                const isCurrent = g.label === currentPeriodLabel;
+                return (
                 <div key={g.label}>
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, padding: "0 4px 8px", borderBottom: "1px solid #e2e8f0", marginBottom: 10 }}>
                     <div>
                       <p style={{ color: "#1e293b", margin: 0, fontWeight: 800, fontSize: 15 }}>{g.label}</p>
                       <p style={{ color: "#94a3b8", margin: "2px 0 0", fontSize: 12 }}>
-                        {g.entries.length} card(s){g.pending > 0 ? " · " + g.pending.toFixed(2) + "h awaiting approval" : ""}
+                        {g.entries.length} card(s){!isCurrent && g.pending > 0 ? " · " + g.pending.toFixed(2) + "h awaiting approval" : ""}
                       </p>
                     </div>
-                    <p style={{ color: "#16a34a", margin: 0, fontWeight: 800, fontSize: 20, whiteSpace: "nowrap" as const }}>{g.hours.toFixed(2)}h</p>
+                    {isCurrent ? (
+                      <p style={{ color: "#94a3b8", margin: 0, fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" as const }}>Total at period close</p>
+                    ) : (
+                      <p style={{ color: "#16a34a", margin: 0, fontWeight: 800, fontSize: 20, whiteSpace: "nowrap" as const }}>{g.hours.toFixed(2)}h</p>
+                    )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column" as const, gap: 10 }}>
               {g.entries.map((h: any) => {
@@ -448,7 +452,8 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
               })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
           <Btn variant="ghost" onClick={() => setShowHistory(false)} style={{ width: "100%", marginTop: 14 }}>Back</Btn>
@@ -506,18 +511,19 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
             </div>
             <div style={{ ...S.card, marginTop: 10 }}>
               <p style={{ color: "#94a3b8", margin: "0 0 10px", fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>MY HOURS BY PAY PERIOD</p>
-              {periodRows.map((g, i) => {
-                const isCurrent = g.label === currentPeriodLabel;
-                return (
+              {periodRows.length === 0 ? (
+                <p style={{ color: "#94a3b8", margin: 0, fontSize: 13 }}>No completed pay periods yet.</p>
+              ) : (
+                periodRows.map((g, i) => (
                   <div key={g.label} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, padding: "9px 0", borderTop: i === 0 ? "none" : "1px solid #f1f5f9" }}>
-                    <div>
-                      <p style={{ color: "#1e293b", margin: 0, fontSize: 14, fontWeight: isCurrent ? 700 : 500 }}>{g.label}</p>
-                      {isCurrent && <p style={{ color: "#94a3b8", margin: "1px 0 0", fontSize: 11 }}>Current pay period</p>}
-                    </div>
-                    <p style={{ color: isCurrent ? "#16a34a" : "#475569", margin: 0, fontWeight: 800, fontSize: isCurrent ? 22 : 16, whiteSpace: "nowrap" as const }}>{g.hours.toFixed(2)}h</p>
+                    <p style={{ color: "#1e293b", margin: 0, fontSize: 14, fontWeight: 500 }}>{g.label}</p>
+                    <p style={{ color: "#475569", margin: 0, fontWeight: 800, fontSize: 16, whiteSpace: "nowrap" as const }}>{g.hours.toFixed(2)}h</p>
                   </div>
-                );
-              })}
+                ))
+              )}
+              <p style={{ color: "#94a3b8", margin: "10px 0 0", fontSize: 11, borderTop: "1px solid #f1f5f9", paddingTop: 10 }}>
+                Totals for {currentPeriodLabel} are available once the pay period closes.
+              </p>
             </div>
             <Btn variant="outline" onClick={() => setShowHistory(true)} style={{ width: "100%", marginTop: 10 }}>View My Time Cards ({myHistory.length})</Btn>
             <Btn variant="ghost" onClick={() => { setEmp(null); setMsg(null); }} style={{ width: "100%", marginTop: 8 }}>Back</Btn>
