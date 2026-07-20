@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# One-time roster fix containing plaintext PINs — never commit
+supabase/LOCAL_add_missing_employees.sql

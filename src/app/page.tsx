@@ -1,51 +1,25 @@
 "use client";
 import ExcelJS from 'exceljs';
-import { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from '../lib/supabase';
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+import { api, getFix } from '@/lib/api';
 
-const EMPLOYEES = [
-  { name: "Adrian", pin: "3847" },
-  { name: "Antonio Alvarez", pin: "6192" },
-  { name: "Brandy Larabie", pin: "5038" },
-  { name: "Cameron Rice", pin: "7261" },
-  { name: "Carolina Landa", pin: "4915" },
-  { name: "Dexter", pin: "6628" },
-  { name: "Easton Ryan", pin: "8374" },
-  { name: "Evariste Sindayizeruka", pin: "2659" },
-  { name: "Griffin Kay", pin: "9123" },
-  { name: "Hayden Rice", pin: "1486" },
-  { name: "Isabella Dean", pin: "7530" },
-  { name: "Jonathan Ceballos", pin: "4271" },
-  { name: "Karen Constantino", pin: "8609" },
-  { name: "Levy", pin: "3152" },
-  { name: "Marshal Armah Adjetey (Wally)", pin: "5784" },
-  { name: "Matthew Larkin", pin: "5176" },
-  { name: "Moses Boateng", pin: "6347" },
-  { name: "Satpal Singh", pin: "9058" },
-  { name: "ShonDreya Smardon", pin: "4629" },
-  { name: "Tim Larkin", pin: "8627" },
-  { name: "Tyrell Anderson", pin: "2813" },
-  { name: "Vanessa Sciampacone", pin: "8041" },
-  { name: "Will Kennedy", pin: "7492" },
-];
+/**
+ * The employee roster and PINs used to live here as module constants — in a
+ * "use client" file, so all 23 names, all 23 PINs, and the manager PIN shipped
+ * to every browser and were readable via View Source.
+ *
+ * Names now come from /api/roster at runtime; PINs never leave the server.
+ * Adding or removing someone is a database row rather than a code deploy.
+ */
+const RosterContext = createContext<{ employees: string[]; managers: string[] }>({
+  employees: [],
+  managers: [],
+});
+const useRoster = () => useContext(RosterContext);
 
-const MANAGERS = ["Nick Dean", "Jake Ryan"];
-const MANAGER_PIN = "7913";
-
-const INITIAL_SITES = [
-  { id: 1, name: "The Shop", address: "4271 Greenbank Rd, Ottawa, ON", lat: 45.2241, lng: -75.7186, radius: 359, active: true },
-  { id: 2, name: "Navaho", address: "8 Deerfield Dr, Ottawa, ON", lat: 45.3559, lng: -75.7520, radius: 359, active: true },
-  { id: 3, name: "Skyline", address: "42 Northview Rd, Ottawa, ON", lat: 45.3629, lng: -75.7296, radius: 359, active: true },
-  { id: 4, name: "Meadowlands", address: "1242 Meadowlands Dr E, Ottawa, ON", lat: 45.35909125246288, lng: -75.72347435767033, radius: 1000, active: true },
-  { id: 5, name: "Craig Henry", address: "269E Craig Henry Dr, Ottawa, ON", lat: 45.33510047434069, lng: -75.76491428943284, radius: 550, active: true },
-  { id: 6, name: "Walkley", address: "550 Reardon Pvt, Ottawa, ON", lat: 45.3758, lng: -75.6483, radius: 359, active: true },
-  { id: 7, name: "Beaconwood", address: "2012 Beaconwood Dr, Ottawa, ON", lat: 45.4474, lng: -75.5971, radius: 359, active: true },
-  { id: 8, name: "Forestview", address: "651 Woodcliffe Pvt, Ottawa, ON", lat: 45.4619, lng: -75.5386, radius: 359, active: true },
-  { id: 9, name: "Aspenview", address: "1628 Teakdale Ave, Ottawa, ON", lat: 45.4517, lng: -75.5265, radius: 359, active: true },
-  { id: 10, name: "Castle Hill", address: "1000 Castle Hill Cres, Ottawa, ON", lat: 45.3696, lng: -75.7454, radius: 359, active: true },
-  { id: 11, name: "Jubilee", address: "24 Rutlege St, Ottawa, ON", lat: 45.27937109543332, lng: -75.7140484165026, radius: 359, active: true },
-  { id: 12, name: "Timberline", address: "25 Alpenglow Private, Ottawa, ON", lat: 45.27572462629332, lng: -75.71053090588975, radius: 359, active: true },
-];
+// Job sites live in the database. The seed for a fresh environment is in
+// supabase/seed_job_sites.sql — the client used to insert these itself whenever
+// it observed an empty table, which double-seeded if two phones opened at once.
 
 const FENCE_RADIUS = 359;
 
@@ -289,21 +263,41 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
   const [pin, setPin] = useState("");
   const [err, setErr] = useState("");
   const [shake, setShake] = useState(false);
+  const [checking, setChecking] = useState(false);
 
+  const fail = useCallback((message: string) => {
+    setErr(message);
+    setPin("");
+    setShake(true);
+    setTimeout(() => setShake(false), 500);
+  }, []);
+
+  /**
+   * The PIN is verified by the server now, not by comparing against a constant
+   * in this bundle. The route also throttles attempts — the old pad allowed
+   * unlimited guesses against a 4-digit space.
+   */
   useEffect(() => {
-    if (pin.length === 4) {
-      setTimeout(() => {
-        if (type === "manager") {
-          if (pin === MANAGER_PIN) { onVerify(true); return; }
-          setErr("Incorrect manager PIN"); setPin(""); setShake(true); setTimeout(() => setShake(false), 500); return;
-        }
-        const emp = employees.find((e: any) => e.name === sel);
-        if (!emp) { setErr("Please select an employee first"); setPin(""); return; }
-        if (emp.pin !== pin) { setErr("Incorrect PIN"); setPin(""); setShake(true); setTimeout(() => setShake(false), 500); return; }
-        setErr(""); onVerify(emp);
-      }, 200);
-    }
-  }, [pin]);
+    if (pin.length !== 4 || checking) return;
+    let cancelled = false;
+
+    (async () => {
+      setChecking(true);
+      const res =
+        type === "manager"
+          ? await api<{ name: string }>('/api/auth/manager', { body: { pin } })
+          : await api<{ name: string }>('/api/auth/employee', { body: { name: sel, pin } });
+
+      if (cancelled) return;
+      setChecking(false);
+
+      if (!res.ok) { fail(res.error); return; }
+      setErr("");
+      onVerify(type === "manager" ? true : { name: res.data.name });
+    })();
+
+    return () => { cancelled = true; };
+  }, [pin, checking, type, sel, onVerify, fail]);
 
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
@@ -315,12 +309,16 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
         <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 20 }}>{subtitle || (type === "manager" ? "Enter manager PIN" : "Select your name, then enter your PIN")}</p>
         {type !== "manager" && (
           <Select placeholder="Select Employee" value={sel} onChange={(e: any) => { setSel(e.target.value); setErr(""); setPin(""); }}
-            options={employees.map((e: any) => ({ value: e.name, label: e.name }))} />
+            options={(employees as string[]).map((name: string) => ({ value: name, label: name }))} />
         )}
         <div style={{ animation: shake ? "shake 0.4s ease" : "none" }}>
-          <PinPad value={pin} onChange={(v: string) => { setPin(v); setErr(""); }} />
+          <PinPad value={pin} onChange={(v: string) => {
+            if (type !== "manager" && !sel) { setErr("Select your name first"); return; }
+            setPin(v); setErr("");
+          }} />
         </div>
-        {err && <p style={{ color: "#dc2626", fontSize: 13, margin: "12px 0 0", fontWeight: 500 }}>{err}</p>}
+        {checking && <p style={{ color: "#64748b", fontSize: 13, margin: "12px 0 0", fontWeight: 500 }}>Checking...</p>}
+        {err && !checking && <p style={{ color: "#dc2626", fontSize: 13, margin: "12px 0 0", fontWeight: 500 }}>{err}</p>}
         <style>{`@keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }`}</style>
       </div>
     </div>
@@ -328,6 +326,7 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
 }
 
 function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any) {
+  const { employees: rosterNames, managers: managerNames } = useRoster();
   const [emp, setEmp] = useState<any>(null);
   const [site, setSite] = useState("");
   const [geoStatus, setGeoStatus] = useState<string | null>(null);
@@ -366,24 +365,42 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
     );
   }, [sites]);
 
+  /**
+   * Success is only reported when the write actually landed.
+   *
+   * Previously the confirmation was shown unconditionally after an awaited call
+   * that swallowed its own error, so an employee in a low-signal truck saw
+   * "clocked in at Navaho", walked away, and no row existed.
+   */
   const clockIn = async () => {
     setLoading(true);
     const s = sites.find((x: any) => x.id === Number(site));
-    await onClockIn(emp.name, s, "");
+    const res = await onClockIn(emp.name, s);
+
+    if (res?.error) {
+      setLoading(false);
+      setMsg({ type: "error", text: res.error });
+      return;
+    }
     setMsg({ type: "success", text: emp.name + " clocked in at " + s.name });
     setTimeout(() => { setLoading(false); setEmp(null); setSite(""); setGeoStatus(null); setMsg(null); }, 2500);
   };
 
   const clockOut = async () => {
     setLoading(true);
-    const active = activeClocks.find((c: any) => c.employee === emp.name);
-    const hrs = calcHours(active.clockIn, new Date().toISOString());
-    await onClockOut(emp.name);
-    setMsg({ type: "success", text: emp.name + " clocked out - " + hrs + "h (30min lunch deducted)" });
+    // Hours come back from the server, which owns the clock now.
+    const res = await onClockOut(emp.name);
+
+    if (res?.error) {
+      setLoading(false);
+      setMsg({ type: "error", text: res.error });
+      return;
+    }
+    setMsg({ type: "success", text: emp.name + " clocked out - " + res.hours + "h (30min lunch deducted)" });
     setTimeout(() => { setLoading(false); setEmp(null); setMsg(null); }, 2500);
   };
 
-  if (!emp) return <PinEntry title="Clock In / Out" subtitle="Verify your identity to start" onVerify={setEmp} employees={EMPLOYEES} />;
+  if (!emp) return <PinEntry title="Clock In / Out" subtitle="Verify your identity to start" onVerify={setEmp} employees={rosterNames} />;
 
   if (showHistory) {
     const statusColor: any = { pending: "#f59e0b", approved: "#16a34a", rejected: "#dc2626", edited: "#7c3aed" };
@@ -468,6 +485,11 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
         {msg && (
           <div style={{ ...S.card, textAlign: "center" as const, marginBottom: 20, borderLeft: "4px solid " + (msg.type === "success" ? "#16a34a" : "#dc2626") }}>
             <p style={{ color: "#1e293b", margin: 0, fontSize: 16, fontWeight: 500 }}>{msg.text}</p>
+            {msg.type === "error" && (
+              // Errors do not auto-dismiss: the punch did not save, and the
+              // employee needs to see that and deliberately retry.
+              <Btn variant="ghost" onClick={() => setMsg(null)} style={{ width: "100%", marginTop: 14 }}>Try again</Btn>
+            )}
           </div>
         )}
         {!msg && (
@@ -535,6 +557,7 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
 }
 
 function PhotoPage({ sites }: any) {
+  const { employees: rosterNames, managers: managerNames } = useRoster();
   const [emp, setEmp] = useState<any>(null);
   const [site, setSite] = useState("");
   const [photos, setPhotos] = useState<any[]>([]);
@@ -567,7 +590,7 @@ function PhotoPage({ sites }: any) {
     }
   };
 
-  if (!emp) return <PinEntry title="Photo Upload" subtitle="Verify to upload job site photos" onVerify={setEmp} employees={EMPLOYEES} />;
+  if (!emp) return <PinEntry title="Photo Upload" subtitle="Verify to upload job site photos" onVerify={setEmp} employees={rosterNames} />;
 
   if (result) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
@@ -653,6 +676,7 @@ function PhotoPage({ sites }: any) {
 }
 
 function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any) {
+  const { employees: rosterNames, managers: managerNames } = useRoster();
   const [selPeriodIdx, setSelPeriodIdx] = useState(0);
 
   if (!managerAuth) return <PinEntry title="Active Board" subtitle="Manager access required" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />;
@@ -735,7 +759,8 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
 
       {/* Employee grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 10, marginBottom: 28 }}>
-        {EMPLOYEES.map((emp) => {
+        {rosterNames.map((name: string) => {
+          const emp = { name };
           const active = activeMap[emp.name];
           return (
             <div key={emp.name} style={{
@@ -799,6 +824,7 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
 }
 
 function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateEntry, managerAuth, setManagerAuth }: any) {
+  const { employees: rosterNames, managers: managerNames } = useRoster();
   // periodIdx: 0..N-1 indexes into `periods` (0 = current pay period). -1 = All Time.
   const [periodIdx, setPeriodIdx] = useState(0);
   const [selEmployee, setSelEmployee] = useState("all");
@@ -1235,7 +1261,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                       style={{ padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", color: "#1e293b", fontSize: 13, fontWeight: 600, minWidth: 130, cursor: "pointer" }}
                     >
                       <option value="">Select manager…</option>
-                      {MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
+                      {managerNames.map((m: string) => <option key={m} value={m}>{m}</option>)}
                     </select>
                   )}
                   {showApprove && (
@@ -1332,7 +1358,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                 style={{ ...S.input, appearance: "none" as const }}
               >
                 <option value="">Select manager…</option>
-                {MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
+                {managerNames.map((m: string) => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
 
@@ -1377,7 +1403,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                 style={{ ...S.input, appearance: "none" as const }}
               >
                 <option value="">Select employee...</option>
-                {EMPLOYEES.map((emp) => <option key={emp.name} value={emp.name}>{emp.name}</option>)}
+                {rosterNames.map((name: string) => <option key={name} value={name}>{name}</option>)}
               </select>
             </div>
 
@@ -1440,7 +1466,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                 style={{ ...S.input, appearance: "none" as const }}
               >
                 <option value="">Select manager...</option>
-                {MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
+                {managerNames.map((m: string) => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
 
@@ -1537,6 +1563,7 @@ function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, s
 }
 
 function EODChecklist({ checklists, onSubmitChecklist }: any) {
+  const { employees: rosterNames, managers: managerNames } = useRoster();
   const [emp, setEmp] = useState<any>(null);
   const [vehicle, setVehicle] = useState("");
   const [items, setItems] = useState<Record<string, boolean>>({});
@@ -1615,13 +1642,21 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
     setDone(true);
   };
 
-  const onMgrPin = (v: string) => {
+  /**
+   * This screen had its own manager gate, comparing against the same bundled
+   * MANAGER_PIN constant but writing to a local `exportAuthed` flag — a second
+   * implementation of manager authority, on an employee-facing tab. It now goes
+   * through the same server route as every other manager check.
+   */
+  const onMgrPin = async (v: string) => {
     setMgrErr("");
     setMgrPin(v);
-    if (v.length === 4) {
-      if (v === MANAGER_PIN) { setExportAuthed(true); setMgrPin(""); }
-      else { setMgrErr("Incorrect manager PIN"); setMgrPin(""); }
-    }
+    if (v.length !== 4) return;
+
+    const res = await api('/api/auth/manager', { body: { pin: v } });
+    setMgrPin("");
+    if (res.ok) setExportAuthed(true);
+    else setMgrErr(res.error);
   };
 
   const closeExport = () => { setExportOpen(false); setExportAuthed(false); setMgrPin(""); setMgrErr(""); };
@@ -1784,7 +1819,7 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
     return (
       <div style={{ maxWidth: 640, margin: "0 auto", width: "100%" }}>
         {header}
-        <PinEntry title="End of Day Checklist" subtitle="Verify your identity to complete the checklist" onVerify={setEmp} employees={EMPLOYEES} />
+        <PinEntry title="End of Day Checklist" subtitle="Verify your identity to complete the checklist" onVerify={setEmp} employees={rosterNames} />
         {exportModal}
       </div>
     );
@@ -1903,159 +1938,179 @@ export default function App() {
   const [eodChecklists, setEodChecklists] = useState<any[]>([]);
   const [managerAuth, setManagerAuth] = useState(false);
   const [dbLoading, setDbLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [roster, setRoster] = useState<{ employees: string[]; managers: string[] }>({
+    employees: [],
+    // Kept client-side: these only populate "assign a manager" dropdowns and
+    // carry no authority. Manager *access* is decided by the server.
+    managers: ["Nick Dean", "Jake Ryan"],
+  });
 
+  /**
+   * Data now comes from authorized server routes rather than straight from
+   * PostgREST with the public anon key.
+   *
+   * Two consequences worth knowing:
+   *
+   * 1. Nothing loads until someone has entered a PIN. Previously every clock
+   *    event for every employee was fetched on mount, before any PIN screen,
+   *    so all 572 rows sat in the Network tab of anyone who opened the site.
+   * 2. /api/timecards scopes by session — employees receive only their own
+   *    cards; managers receive everything.
+   */
   const loadData = useCallback(async () => {
-    const [activeRes, completedRes, sitesRes, eodRes] = await Promise.all([
-      supabase.from('clock_events').select('*').is('clock_out', null),
-      supabase.from('clock_events').select('*').not('clock_out', 'is', null).order('clock_in', { ascending: false }),
-      supabase.from('job_sites').select('*').order('id', { ascending: true }),
-      // eod_checklists may not exist yet (needs the one-time SQL); errors are ignored so the rest of the app still loads.
-      supabase.from('eod_checklists').select('*').order('created_at', { ascending: false }),
+    const [cards, siteRes] = await Promise.all([
+      api<{ active: any[]; history: any[] }>('/api/timecards'),
+      api<{ sites: any[] }>('/api/sites'),
     ]);
 
-    if (activeRes.data) {
-      setActiveClocks(activeRes.data.map(mapRow));
+    // 401 simply means "no session yet" — the PIN screen is showing. Not an error.
+    if (cards.ok) {
+      setActiveClocks(cards.data.active.map(mapRow));
+      setHistory(cards.data.history.map(mapRow));
+      setLoadError("");
+    } else if (!/PIN/i.test(cards.error)) {
+      setLoadError(cards.error);
     }
-    if (completedRes.data) {
-      setHistory(completedRes.data.map(mapRow));
-    }
-    if (eodRes.data) {
-      setEodChecklists(eodRes.data);
-    }
-    if (sitesRes.data) {
-      if (sitesRes.data.length === 0) {
-        await supabase.from('job_sites').insert(INITIAL_SITES);
-        setSites(INITIAL_SITES);
-      } else {
-        setSites(sitesRes.data);
-      }
-    }
+
+    if (siteRes.ok) setSites(siteRes.data.sites);
+
     setDbLoading(false);
   }, []);
 
+  const loadEod = useCallback(async () => {
+    const res = await api<{ checklists: any[] }>('/api/eod');
+    if (res.ok) setEodChecklists(res.data.checklists);
+  }, []);
+
+  useEffect(() => {
+    api<{ employees: string[] }>('/api/roster').then((r) => {
+      if (r.ok) setRoster((p) => ({ ...p, employees: r.data.employees }));
+    });
+  }, []);
+
+  /**
+   * Polling replaces the realtime subscription.
+   *
+   * The old channel subscribed to postgres_changes with the anon key; once RLS
+   * denies anon everything (migration 0003) no rows can be delivered, so
+   * realtime stops working by construction. At this crew size a 20s refresh on
+   * the manager board is indistinguishable in practice, and it costs one
+   * request instead of a full four-table refetch on every single change.
+   */
   useEffect(() => {
     loadData();
-
-    const channel = supabase
-      .channel('db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clock_events' }, loadData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_sites' }, loadData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'eod_checklists' }, loadData)
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    const id = setInterval(loadData, 20000);
+    return () => clearInterval(id);
   }, [loadData]);
 
+  // Signing in as a manager widens what /api/timecards returns (own cards ->
+  // everyone's), so refetch immediately rather than waiting for the next poll.
+  useEffect(() => {
+    if (managerAuth) { loadData(); loadEod(); }
+  }, [managerAuth, loadData, loadEod]);
+
+  // Leaving the manager tabs drops manager state; the cookie still expires on
+  // its own, but this keeps the previous behaviour of re-prompting.
   useEffect(() => { if (page < 3) setManagerAuth(false); }, [page]);
 
   const onSubmitChecklist = async (payload: any) => {
-    const { data, error } = await supabase.from('eod_checklists').insert(payload).select().single();
-    if (!error && data) {
-      setEodChecklists((p) => [data, ...p]);
-    }
-    return { error: error?.message };
+    const res = await api<{ checklist: any }>('/api/eod', { body: payload });
+    if (!res.ok) return { error: res.error };
+    setEodChecklists((p) => [res.data.checklist, ...p]);
+    return {};
   };
 
-  const onClockIn = async (empName: string, site: any, manager: string) => {
-    const now = new Date().toISOString();
-    const { data, error } = await supabase.from('clock_events').insert({
-      employee_name: empName,
-      site_name: site.name,
-      site_id: site.id,
-      manager_name: manager,
-      clock_in: now,
-      lat: site.lat,
-      lng: site.lng,
-    }).select().single();
+  /**
+   * Every handler below now returns { error } instead of swallowing failures.
+   *
+   * The old shape was `if (!error) { ...update local state... }` with no else
+   * branch, so a failed write left the UI showing the change as if it had
+   * saved. onEditEntry never inspected `error` at all — a failed payroll edit
+   * looked applied until the next refresh.
+   */
 
-    if (!error && data) {
-      setActiveClocks((p) => [...p, mapRow(data)]);
-    }
+  const onClockIn = async (_empName: string, site: any) => {
+    // Real GPS, captured here and validated server-side. The old code recorded
+    // the job site's own coordinates, so every shift "proved" the same thing.
+    const fix = await getFix();
+    if (!fix) return { error: 'Could not read your location. Enable GPS and try again.' };
+
+    const res = await api<{ event: any }>('/api/clock/in', {
+      body: { siteId: site.id, lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy },
+    });
+    if (!res.ok) return { error: res.error };
+
+    setActiveClocks((p) => [...p, mapRow(res.data.event)]);
+    return {};
   };
 
-  const onClockOut = async (employeeName: string) => {
-    const active = activeClocks.find((c) => c.employee === employeeName);
-    if (!active) return;
-    const now = new Date().toISOString();
-    const hrs = calcHours(active.clockIn, now);
-    const { error } = await supabase.from('clock_events').update({
-      clock_out: now,
-      hours: hrs,
-      status: 'pending',
-    }).eq('id', active.id);
+  const onClockOut = async (_employeeName: string) => {
+    // Clock-out never blocks on location — an out-of-fence punch is recorded
+    // and flagged for the manager, not refused. See api/clock/out/route.ts.
+    const fix = await getFix();
 
-    if (!error) {
-      const completed = { ...active, clockOut: now, hours: hrs, status: 'pending' };
-      setActiveClocks((p) => p.filter((c) => c.employee !== employeeName));
-      setHistory((p) => [completed, ...p]);
-    }
+    const res = await api<{ hours: number }>('/api/clock/out', {
+      body: fix ? { lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy } : {},
+    });
+    if (!res.ok) return { error: res.error };
+
+    await loadData();
+    return { hours: res.data.hours };
   };
 
   const onApprove = async (id: string) => {
-    const { error } = await supabase.from('clock_events').update({ status: 'approved' }).eq('id', id);
-    if (!error) {
-      setHistory((p) => p.map((h) => h.id === id ? { ...h, status: 'approved' } : h));
-    }
+    const res = await api('/api/timecards/' + id, { method: 'PATCH', body: { action: 'approve' } });
+    if (!res.ok) return { error: res.error };
+    setHistory((p) => p.map((h) => h.id === id ? { ...h, status: 'approved' } : h));
+    return {};
   };
 
   const onReject = async (id: string) => {
-    const { error } = await supabase.from('clock_events').update({ status: 'rejected' }).eq('id', id);
-    if (!error) {
-      setHistory((p) => p.map((h) => h.id === id ? { ...h, status: 'rejected' } : h));
-    }
+    const res = await api('/api/timecards/' + id, { method: 'PATCH', body: { action: 'reject' } });
+    if (!res.ok) return { error: res.error };
+    setHistory((p) => p.map((h) => h.id === id ? { ...h, status: 'rejected' } : h));
+    return {};
   };
 
   const onEditEntry = useCallback(async (id: string, updates: any) => {
-    const dbUpdates: any = { status: 'edited' };
-    if (updates.clockIn !== undefined) dbUpdates.clock_in = updates.clockIn;
-    if (updates.clockOut !== undefined) dbUpdates.clock_out = updates.clockOut;
-    if (updates.hours !== undefined) dbUpdates.hours = updates.hours;
-    if (updates.site !== undefined) dbUpdates.site_name = updates.site;
-    if (updates.siteId !== undefined) dbUpdates.site_id = updates.siteId;
-    if (updates.manager !== undefined) dbUpdates.manager_name = updates.manager;
-    if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
-    await supabase.from('clock_events').update(dbUpdates).eq('id', id);
+    const res = await api('/api/timecards/' + id, {
+      method: 'PATCH',
+      body: { action: 'edit', ...updates },
+    });
+    if (!res.ok) return { error: res.error };
     setHistory((p: any[]) => p.map((h: any) => h.id === id ? { ...h, ...updates, status: 'edited' } : h));
+    return {};
   }, []);
 
   const onCreateEntry = useCallback(async (entry: any) => {
-    const { data, error } = await supabase.from('clock_events').insert({
-      employee_name: entry.employee,
-      site_name: entry.site,
-      site_id: entry.siteId,
-      manager_name: entry.manager,
-      clock_in: entry.clockIn,
-      clock_out: entry.clockOut,
-      hours: entry.hours,
-      status: 'pending',
-      notes: entry.notes || null,
-    }).select().single();
-    if (!error && data) {
-      setHistory((p) => [mapRow(data), ...p]);
-    }
+    const res = await api<{ event: any }>('/api/timecards', { body: entry });
+    if (!res.ok) return { error: res.error };
+    setHistory((p) => [mapRow(res.data.event), ...p]);
+    return {};
   }, []);
 
   const onAddSite = async (siteData: any) => {
-    const { data, error } = await supabase.from('job_sites').insert(siteData).select().single();
-    if (!error && data) {
-      setSites((p) => [...p, data]);
-    }
+    const res = await api<{ site: any }>('/api/sites', { body: siteData });
+    if (!res.ok) return { error: res.error };
+    setSites((p) => [...p, res.data.site]);
+    return {};
   };
 
   const onToggleSite = async (id: number) => {
     const site = sites.find((s) => s.id === id);
-    if (!site) return;
-    const { error } = await supabase.from('job_sites').update({ active: !site.active }).eq('id', id);
-    if (!error) {
-      setSites((p) => p.map((s) => s.id === id ? { ...s, active: !s.active } : s));
-    }
+    if (!site) return { error: 'That job site no longer exists.' };
+    const res = await api('/api/sites/' + id, { method: 'PATCH', body: { active: !site.active } });
+    if (!res.ok) return { error: res.error };
+    setSites((p) => p.map((s) => s.id === id ? { ...s, active: !s.active } : s));
+    return {};
   };
 
   const onRemoveSite = async (id: number) => {
-    const { error } = await supabase.from('job_sites').delete().eq('id', id);
-    if (!error) {
-      setSites((p) => p.filter((s) => s.id !== id));
-    }
+    const res = await api('/api/sites/' + id, { method: 'DELETE' });
+    if (!res.ok) return { error: res.error };
+    setSites((p) => p.filter((s) => s.id !== id));
+    return {};
   };
 
   const tabs = [
@@ -2076,7 +2131,13 @@ export default function App() {
   }
 
   return (
+    <RosterContext.Provider value={roster}>
     <div style={{ minHeight: "100vh", background: "#f5f6fa", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+      {loadError && (
+        <div style={{ background: "#fef2f2", borderBottom: "1px solid #fecaca", padding: "10px 24px", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>
+          {loadError}
+        </div>
+      )}
       <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <img src="/logo.png" alt="Dean Ryans Landscape / Property Maintenance" style={{ height: 48, width: "auto", display: "block" }} />
@@ -2110,5 +2171,6 @@ export default function App() {
         {page === 5 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
       </div>
     </div>
+    </RosterContext.Provider>
   );
 }
