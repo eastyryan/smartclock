@@ -1,0 +1,94 @@
+name: SmartClock manager digests
+
+# Triggers the 9:30 AM / 6:00 PM manager digests.
+#
+# This lives here, not in vercel.json, because Vercel Cron on the Hobby plan
+# won't run our four sub-daily schedules (it caps at 2 jobs, once per day).
+# GitHub Actions schedules in UTC — the same times the old vercel.json used —
+# and src/app/api/cron/digest/route.ts checks the real America/Toronto clock,
+# so of the two candidate fires per slot exactly one actually sends and the
+# other is a no-op. That makes the schedule DST-proof without any state.
+#
+# Heads up: GitHub can delay scheduled runs under load. The handler accepts a
+# ~20-minute window per slot, so a normal few-minute delay is fine; a very late
+# run could miss a slot. Use the "Run workflow" button to recover (force_kind),
+# or preview safely with dry_run.
+
+on:
+  schedule:
+    - cron: '30 13 * * *'   # morning — 9:30 AM Toronto during EDT (summer)
+    - cron: '30 14 * * *'   # morning — 9:30 AM Toronto during EST (winter)
+    - cron: '0 22 * * *'    # evening — 6:00 PM Toronto during EDT (summer)
+    - cron: '0 23 * * *'    # evening — 6:00 PM Toronto during EST (winter)
+  workflow_dispatch:
+    inputs:
+      force_kind:
+        description: 'Force-send this digest now, ignoring the clock'
+        required: false
+        default: 'none'
+        type: choice
+        options: [none, morning, evening]
+      dry_run:
+        description: 'Preview only — build the digest but do NOT send'
+        required: false
+        default: false
+        type: boolean
+
+# Never let two runs overlap (e.g. a delayed schedule meeting a manual run).
+concurrency:
+  group: smartclock-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger digest endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FORCE_KIND: ${{ github.event.inputs.force_kind }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET repo secret is not set — add it under Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+
+          BASE="https://dnrapp.vercel.app/api/cron/digest"
+
+          QS=""
+          add() { if [ -z "$QS" ]; then QS="$1"; else QS="$QS&$1"; fi; }
+
+          # Manual force-send (empty on scheduled runs).
+          if [ -n "${FORCE_KIND:-}" ] && [ "$FORCE_KIND" != "none" ]; then
+            add "force=1"; add "kind=$FORCE_KIND"
+          fi
+
+          # Preview without sending. dryRun only builds for a real/forced slot,
+          # so pair it with force so a preview works at any time of day.
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            add "dryRun=1"
+            if [ -z "${FORCE_KIND:-}" ] || [ "$FORCE_KIND" = "none" ]; then
+              add "force=1"; add "kind=morning"
+            fi
+          fi
+
+          URL="$BASE"
+          [ -n "$QS" ] && URL="$BASE?$QS"
+
+          echo "GET $URL"
+          code=$(curl -sS --retry 3 --retry-delay 5 --retry-all-errors \
+            -o response.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" "$URL")
+
+          echo "HTTP $code"
+          echo "--- response ---"
+          cat response.json || true
+          echo
+
+          if [ "$code" -ge 400 ]; then
+            echo "::error::Digest endpoint returned HTTP $code"
+            exit 1
+          fi
