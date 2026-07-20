@@ -347,7 +347,7 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
   );
 }
 
-function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any) {
+function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history, onAuth }: any) {
   const { employees: rosterNames, managers: managerNames } = useRoster();
   const [emp, setEmp] = useState<any>(null);
   const [site, setSite] = useState("");
@@ -422,7 +422,13 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history }: any)
     setTimeout(() => { setLoading(false); setEmp(null); setMsg(null); }, 2500);
   };
 
-  if (!emp) return <PinEntry title="Clock In / Out" subtitle="Verify your identity to start" onVerify={setEmp} employees={rosterNames} />;
+  // On PIN verification, refetch immediately. The app's first loadData() ran
+  // before any session existed (401 -> empty activeClocks/history), and the
+  // only other refresh is the 20s poll. Without this an employee who just
+  // signed in sees the stale empty snapshot — "Not currently clocked in", no
+  // hours, no time cards — until the next poll tick, which reads as lag and
+  // hides the Clock Out button they came to use. Mirrors the manager refetch.
+  if (!emp) return <PinEntry title="Clock In / Out" subtitle="Verify your identity to start" onVerify={(e: any) => { setEmp(e); onAuth?.(); }} employees={rosterNames} />;
 
   if (showHistory) {
     const statusColor: any = { pending: "#f59e0b", approved: "#16a34a", rejected: "#dc2626", edited: "#7c3aed" };
@@ -2185,7 +2191,7 @@ export default function App() {
         ))}
       </div>
       <div style={{ padding: "24px 24px 40px", width: "100%", boxSizing: "border-box" as const }}>
-        {page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} onClockIn={onClockIn} onClockOut={onClockOut} history={history} />}
+        {page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} onClockIn={onClockIn} onClockOut={onClockOut} history={history} onAuth={loadData} />}
         {page === 1 && <PhotoPage sites={sites} />}
         {page === 2 && <EODChecklist checklists={eodChecklists} onSubmitChecklist={onSubmitChecklist} />}
         {page === 3 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
