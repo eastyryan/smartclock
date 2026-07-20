@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { createToken, cookieOptions, SESSION_COOKIE } from '@/lib/session';
-import { checkRateLimit, recordFailure, clearAttempts } from '@/lib/rate-limit';
+import { failureDelayMs, recordFailure, clearAttempts, sleep } from '@/lib/rate-limit';
 
 /**
  * Verifies a manager PIN and issues a manager session cookie.
@@ -29,14 +29,6 @@ export async function POST(request: Request) {
 
   // Single shared key: the manager PIN is one credential, so throttle it as one.
   const key = 'manager';
-  const limit = await checkRateLimit(key);
-  if (!limit.ok) {
-    const mins = Math.ceil(limit.retryAfterSec / 60);
-    return NextResponse.json(
-      { error: `Too many incorrect attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.` },
-      { status: 429 }
-    );
-  }
 
   const { data, error } = await supabaseAdmin.rpc('verify_manager_pin', { p_pin: pin });
 
@@ -48,6 +40,7 @@ export async function POST(request: Request) {
   const matches: Array<{ name: string }> = Array.isArray(data) ? data : [];
   if (matches.length === 0) {
     await recordFailure(key);
+    await sleep(await failureDelayMs(key));
     return NextResponse.json({ error: 'Incorrect manager PIN' }, { status: 401 });
   }
 

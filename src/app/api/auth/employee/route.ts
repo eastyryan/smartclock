@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { createToken, cookieOptions, SESSION_COOKIE } from '@/lib/session';
-import { checkRateLimit, recordFailure, clearAttempts } from '@/lib/rate-limit';
+import { failureDelayMs, recordFailure, clearAttempts, sleep } from '@/lib/rate-limit';
 
 /**
  * Verifies an employee PIN and issues a short-lived session cookie.
@@ -31,14 +31,6 @@ export async function POST(request: Request) {
   }
 
   const key = `employee:${name.toLowerCase()}`;
-  const limit = await checkRateLimit(key);
-  if (!limit.ok) {
-    const mins = Math.ceil(limit.retryAfterSec / 60);
-    return NextResponse.json(
-      { error: `Too many incorrect attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}, or see your manager.` },
-      { status: 429 }
-    );
-  }
 
   const { data, error } = await supabaseAdmin.rpc('verify_employee_pin', {
     p_name: name,
@@ -53,6 +45,8 @@ export async function POST(request: Request) {
   const match = Array.isArray(data) ? data[0] : null;
   if (!match) {
     await recordFailure(key);
+    // Slow repeated wrong guesses. Never blocks, and a correct PIN is instant.
+    await sleep(await failureDelayMs(key));
     return NextResponse.json({ error: 'Incorrect PIN' }, { status: 401 });
   }
 

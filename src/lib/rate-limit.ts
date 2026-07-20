@@ -2,40 +2,44 @@ import 'server-only';
 import { supabaseAdmin } from './supabase-admin';
 
 /**
- * PIN attempt throttling.
+ * PIN abuse protection — WITHOUT lockouts.
  *
- * With a 4-digit PIN the search space is 10,000, so this — not the bcrypt hash —
- * is what actually stops an attacker. The old PinPad had no throttle of any kind.
+ * There is deliberately no lockout. An earlier version locked an employee out
+ * for 15 minutes after 5 wrong attempts, which is the wrong trade for this
+ * business: the crew clocks in at 7am wearing gloves, a mistyped PIN is
+ * routine, and a locked-out employee cannot start work while a manager has no
+ * way to clear it from the app. Being unable to clock in is a worse, more
+ * likely problem than a brute-force attempt.
  *
- * Backed by a table rather than memory because serverless instances don't share
- * state; an in-process counter would reset on every cold start.
+ * Instead, wrong attempts get progressively slower. A CORRECT PIN is never
+ * delayed, so a real employee never waits — only someone guessing does.
  *
- * Keyed per identifier (employee name, or the literal 'manager') so one person
- * fat-fingering their PIN can't lock out the rest of the crew mid-shift.
+ * That still makes scripted brute force impractical. A 4-digit PIN is 10,000
+ * combinations; at the capped 2s penalty that is over five hours of sustained
+ * wrong guesses against a single name, and the attempts are recorded.
  */
 
-const MAX_ATTEMPTS = 5;
+const FREE_ATTEMPTS = 4;
+const STEP_MS = 500;
+const MAX_DELAY_MS = 2000;
 const WINDOW_MS = 15 * 60 * 1000;
-const LOCKOUT_MS = 15 * 60 * 1000;
 
-export type RateLimitResult = { ok: true } | { ok: false; retryAfterSec: number };
-
-export async function checkRateLimit(identifier: string): Promise<RateLimitResult> {
+/**
+ * How long to stall a FAILED attempt, based on recent failures.
+ * Never called on success, so correct PINs are always instant.
+ */
+export async function failureDelayMs(identifier: string): Promise<number> {
   const { data } = await supabaseAdmin
     .from('auth_attempts')
-    .select('attempts, window_start, locked_until')
+    .select('attempts, window_start')
     .eq('identifier', identifier)
     .maybeSingle();
 
-  if (!data) return { ok: true };
+  if (!data?.window_start) return 0;
+  if (Date.now() - new Date(data.window_start).getTime() > WINDOW_MS) return 0;
 
-  if (data.locked_until) {
-    const until = new Date(data.locked_until).getTime();
-    if (until > Date.now()) {
-      return { ok: false, retryAfterSec: Math.ceil((until - Date.now()) / 1000) };
-    }
-  }
-  return { ok: true };
+  const over = (data.attempts ?? 0) - FREE_ATTEMPTS;
+  return over <= 0 ? 0 : Math.min(MAX_DELAY_MS, over * STEP_MS);
 }
 
 export async function recordFailure(identifier: string): Promise<void> {
@@ -49,16 +53,12 @@ export async function recordFailure(identifier: string): Promise<void> {
   const windowExpired =
     !data?.window_start || now - new Date(data.window_start).getTime() > WINDOW_MS;
 
-  const attempts = windowExpired ? 1 : (data?.attempts ?? 0) + 1;
-  const lockedUntil =
-    attempts >= MAX_ATTEMPTS ? new Date(now + LOCKOUT_MS).toISOString() : null;
-
   await supabaseAdmin.from('auth_attempts').upsert(
     {
       identifier,
-      attempts,
+      attempts: windowExpired ? 1 : (data?.attempts ?? 0) + 1,
       window_start: windowExpired ? new Date(now).toISOString() : data!.window_start,
-      locked_until: lockedUntil,
+      locked_until: null, // never set; column kept so old rows stay valid
     },
     { onConflict: 'identifier' }
   );
@@ -67,3 +67,5 @@ export async function recordFailure(identifier: string): Promise<void> {
 export async function clearAttempts(identifier: string): Promise<void> {
   await supabaseAdmin.from('auth_attempts').delete().eq('identifier', identifier);
 }
+
+export const sleep = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
