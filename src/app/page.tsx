@@ -272,32 +272,54 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
     setTimeout(() => setShake(false), 500);
   }, []);
 
+  // Guards against a double submit. Deliberately a ref, not state: as state it
+  // would be an effect dependency, and see the note below for why that deadlocks.
+  const inFlight = useRef(false);
+
+  // Latest props/state read inside the effect without becoming dependencies.
+  const latest = useRef({ sel, type, onVerify });
+  latest.current = { sel, type, onVerify };
+
   /**
    * The PIN is verified by the server now, not by comparing against a constant
    * in this bundle. The route also throttles attempts — the old pad allowed
    * unlimited guesses against a 4-digit space.
+   *
+   * This effect depends on `pin` ONLY, which matters more than it looks.
+   *
+   * It previously also depended on `checking` and `onVerify`, and deadlocked on
+   * the first attempt: setChecking(true) changed `checking`, which re-ran the
+   * effect, whose cleanup set cancelled = true on the original run — so the
+   * in-flight request returned early and never cleared the flag. The re-run then
+   * bailed on `checking` being true, leaving the pad stuck on "Checking..."
+   * forever. `onVerify` did the same thing on the manager screens, where it is
+   * an inline arrow with a fresh identity every render.
+   *
+   * There is no cancellation now. It was cancelling the very request it needed,
+   * and a PIN check that survives an unmount is harmless — the worst case is a
+   * setState on an unmounted component, which React 18+ ignores.
    */
   useEffect(() => {
-    if (pin.length !== 4 || checking) return;
-    let cancelled = false;
+    if (pin.length !== 4 || inFlight.current) return;
+
+    inFlight.current = true;
+    setChecking(true);
 
     (async () => {
-      setChecking(true);
+      const { sel, type, onVerify } = latest.current;
       const res =
         type === "manager"
           ? await api<{ name: string }>('/api/auth/manager', { body: { pin } })
           : await api<{ name: string }>('/api/auth/employee', { body: { name: sel, pin } });
 
-      if (cancelled) return;
+      inFlight.current = false;
       setChecking(false);
 
       if (!res.ok) { fail(res.error); return; }
       setErr("");
       onVerify(type === "manager" ? true : { name: res.data.name });
     })();
-
-    return () => { cancelled = true; };
-  }, [pin, checking, type, sel, onVerify, fail]);
+  }, [pin, fail]);
 
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
