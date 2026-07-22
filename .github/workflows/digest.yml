@@ -3,23 +3,31 @@ name: SmartClock manager digests
 # Triggers the 9:30 AM / 6:00 PM manager digests.
 #
 # This lives here, not in vercel.json, because Vercel Cron on the Hobby plan
-# won't run our four sub-daily schedules (it caps at 2 jobs, once per day).
-# GitHub Actions schedules in UTC — the same times the old vercel.json used —
-# and src/app/api/cron/digest/route.ts checks the real America/Toronto clock,
-# so of the two candidate fires per slot exactly one actually sends and the
-# other is a no-op. That makes the schedule DST-proof without any state.
+# won't run sub-daily schedules (it caps at 2 jobs, once per day).
 #
-# Heads up: GitHub can delay scheduled runs under load. The handler accepts a
-# ~20-minute window per slot, so a normal few-minute delay is fine; a very late
-# run could miss a slot. Use the "Run workflow" button to recover (force_kind),
-# or preview safely with dry_run.
+# THIS SWEEPS, IT DOES NOT FIRE ONCE PER SLOT. The previous version fired at
+# exactly the four candidate UTC times and trusted GitHub to be punctual. It is
+# not: on 2026-07-21 the four runs were 44, 56, 89 and 112 minutes late, every
+# one landed outside the handler's narrow window, and the day's digests were
+# silently dropped behind four green checkmarks.
+#
+# So: fire every 30 minutes across both candidate windows and let the handler
+# decide. src/app/api/cron/digest/route.ts checks the real America/Toronto
+# clock (DST-proof) and claims the slot in the digest_sends table before
+# sending, so of the many fires in a window exactly ONE sends and the rest
+# return {"skipped": "already sent"} without touching Supabase or a provider.
+# Extra fires are cheap; a missed digest is not.
 
 on:
   schedule:
-    - cron: '30 13 * * *'   # morning — 9:30 AM Toronto during EDT (summer)
-    - cron: '30 14 * * *'   # morning — 9:30 AM Toronto during EST (winter)
-    - cron: '0 22 * * *'    # evening — 6:00 PM Toronto during EDT (summer)
-    - cron: '0 23 * * *'    # evening — 6:00 PM Toronto during EST (winter)
+    # Morning: 9:30 AM Toronto is 13:30 UTC (EDT) or 14:30 UTC (EST). Sweeping
+    # 13:00-16:30 UTC covers both plus ~3h of GitHub lag.
+    - cron: '0,30 13-16 * * *'
+    # Evening: 6:00 PM Toronto is 22:00 UTC (EDT) or 23:00 UTC (EST). Sweeping
+    # 22:00-01:30 UTC covers both; the handler stops at Toronto midnight so the
+    # post-midnight UTC fires cannot bleed into the next dateKey.
+    - cron: '0,30 22-23 * * *'
+    - cron: '0,30 0-1 * * *'
   workflow_dispatch:
     inputs:
       force_kind:
