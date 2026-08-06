@@ -1536,16 +1536,62 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
 function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, setManagerAuth }: any) {
   const [showAdd, setShowAdd] = useState(false);
   const [nf, setNf] = useState({ name: "", address: "", lat: "", lng: "" });
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [locBusy, setLocBusy] = useState(false);
+  const [locNote, setLocNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   if (!managerAuth) return <PinEntry title="Job Sites" subtitle="Manager access required" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />;
 
-  const addSite = () => {
-    if (!nf.name || !nf.address || !nf.lat || !nf.lng) return;
-    onAddSite({ name: nf.name, address: nf.address, lat: parseFloat(nf.lat), lng: parseFloat(nf.lng), active: true });
-    setNf({ name: "", address: "", lat: "", lng: "" }); setShowAdd(false);
+  // Fills the coordinate fields from the phone's GPS — stand mid-site and tap.
+  // Same getFix the clock-in flow uses, so permissions behave identically.
+  const useMyLocation = async () => {
+    setLocBusy(true);
+    setLocNote(null);
+    const fix = await getFix();
+    setLocBusy(false);
+    if (!fix) {
+      setLocNote({ ok: false, text: "Could not read your location. Allow location access for this site and try again." });
+      return;
+    }
+    setNf((p: any) => ({ ...p, lat: fix.lat.toFixed(6), lng: fix.lng.toFixed(6) }));
+    setLocNote({ ok: true, text: `Filled from where you're standing (±${Math.max(1, Math.round(fix.accuracy))} m). Best taken from the middle of the site.` });
   };
-  const toggle = (id: number) => onToggleSite(id);
-  const remove = (id: number) => onRemoveSite(id);
+
+  /**
+   * These three used to fire and forget, so the modal closed and the card list
+   * re-rendered as though the write had landed. A duplicate site name, or a
+   * removal the server refuses because time cards reference the site, then
+   * looked like a success until the next 20s poll silently undid it.
+   */
+  const addSite = async () => {
+    if (!nf.name || !nf.address || !nf.lat || !nf.lng) return;
+    setBusy(true);
+    setErr("");
+    const res = await onAddSite({
+      name: nf.name, address: nf.address,
+      lat: parseFloat(nf.lat), lng: parseFloat(nf.lng), active: true,
+    });
+    setBusy(false);
+    if (res?.error) { setErr(res.error); return; }
+    setNf({ name: "", address: "", lat: "", lng: "" });
+    setLocNote(null);
+    setShowAdd(false);
+  };
+
+  const toggle = async (id: number) => {
+    setErr("");
+    const res = await onToggleSite(id);
+    if (res?.error) setErr(res.error);
+  };
+
+  const remove = async (id: number) => {
+    setErr("");
+    const res = await onRemoveSite(id);
+    // The refusal explains that pausing keeps the history — worth reading, so it
+    // does not auto-dismiss.
+    if (res?.error) setErr(res.error);
+  };
 
   return (
     <div style={{ width: "100%" }}>
@@ -1554,24 +1600,42 @@ function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, s
           <h2 style={{ color: "#1e293b", margin: 0, fontSize: 24, fontWeight: 800 }}>Job Sites</h2>
           <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: 14 }}>{sites.filter((s: any) => s.active).length} active / {sites.length} total</p>
         </div>
-        <Btn onClick={() => setShowAdd(true)}>+ Add Site</Btn>
+        <Btn onClick={() => { setErr(""); setLocNote(null); setShowAdd(true); }}>+ Add Site</Btn>
       </div>
+      {err && !showAdd && (
+        <div style={{ ...S.card, borderLeft: "4px solid #dc2626", marginBottom: 16, padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <p style={{ color: "#dc2626", margin: 0, fontSize: 13, fontWeight: 600, flex: 1 }}>{err}</p>
+          <button onClick={() => setErr("")} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+        </div>
+      )}
       <Modal open={showAdd} onClose={() => setShowAdd(false)}>
         <h3 style={{ color: "#1e293b", marginTop: 0, fontSize: 20, fontWeight: 700 }}>Add New Job Site</h3>
         <Input label="Site Name" value={nf.name} onChange={(e: any) => setNf((p: any) => ({ ...p, name: e.target.value }))} placeholder="e.g. Riverside" />
         <Input label="Address" value={nf.address} onChange={(e: any) => setNf((p: any) => ({ ...p, address: e.target.value }))} placeholder="e.g. 123 Main St, Ottawa, ON" />
+        <button type="button" onClick={useMyLocation} disabled={locBusy}
+          style={{ width: "100%", padding: "11px 14px", marginBottom: 12, borderRadius: 10, border: "2px dashed #dc2626", background: "#fef2f2", color: "#b91c1c", cursor: "pointer", fontSize: 14, fontWeight: 700, opacity: locBusy ? 0.6 : 1 }}>
+          {locBusy ? "Reading GPS..." : "📍 Use My Current Location"}
+        </button>
+        {locNote && (
+          <p style={{ color: locNote.ok ? "#15803d" : "#dc2626", fontSize: 12, margin: "-4px 0 12px", fontWeight: 500 }}>{locNote.text}</p>
+        )}
         <div style={{ display: "flex", gap: 10 }}>
           <div style={{ flex: 1 }}><Input label="Latitude" type="number" step="any" value={nf.lat} onChange={(e: any) => setNf((p: any) => ({ ...p, lat: e.target.value }))} placeholder="45.3500" /></div>
           <div style={{ flex: 1 }}><Input label="Longitude" type="number" step="any" value={nf.lng} onChange={(e: any) => setNf((p: any) => ({ ...p, lng: e.target.value }))} placeholder="-75.7000" /></div>
         </div>
-        <Btn onClick={addSite} style={{ width: "100%" }}>Add Job Site</Btn>
+        {err && (
+          <p style={{ color: "#dc2626", fontSize: 13, margin: "0 0 12px", fontWeight: 500 }}>{err}</p>
+        )}
+        <Btn onClick={addSite} disabled={busy} style={{ width: "100%" }}>
+          {busy ? "Saving..." : "Add Job Site"}
+        </Btn>
       </Modal>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 10 }}>
         {sites.map((s: any) => (
           <div key={s.id} style={{ ...S.card, opacity: s.active ? 1 : 0.55, transition: "all 0.2s" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flex: 1 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: s.active ? "#fef2f2" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>P</div>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: s.active ? "#fef2f2" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>📍</div>
                 <div>
                   <p style={{ color: "#1e293b", margin: 0, fontWeight: 700 }}>{s.name}</p>
                   <p style={{ color: "#64748b", margin: "2px 0", fontSize: 13 }}>{s.address}</p>
@@ -1590,7 +1654,136 @@ function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, s
   );
 }
 
-function EODChecklist({ checklists, onSubmitChecklist }: any) {
+function CrewPage({ managerAuth, setManagerAuth, activeClocks, onCrewChanged }: any) {
+  const [crew, setCrew] = useState<any[]>([]);
+  const [err, setErr] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [nf, setNf] = useState({ name: "", pin: "" });
+  const [busy, setBusy] = useState(false);
+  // Reset-PIN modal target; null = closed.
+  const [resetFor, setResetFor] = useState<string | null>(null);
+  const [resetPin, setResetPin] = useState("");
+
+  const load = useCallback(async () => {
+    const res = await api<{ crew: any[] }>('/api/crew');
+    if (res.ok) setCrew(res.data.crew);
+    else setErr(res.error);
+  }, []);
+  useEffect(() => { if (managerAuth) load(); }, [managerAuth, load]);
+
+  if (!managerAuth) return <PinEntry title="Crew" subtitle="Manager access required" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />;
+
+  const onClock = new Set((activeClocks || []).map((c: any) => c.employee));
+  const modalOpen = showAdd || resetFor !== null;
+
+  // Adding a person and resetting a PIN are the same server call:
+  // set_employee_pin upserts by name and reactivates.
+  const savePin = async (name: string, pin: string) => {
+    if (!name) { setErr("A name is required."); return false; }
+    if (!/^\d{4}$/.test(pin)) { setErr("The PIN must be exactly 4 digits."); return false; }
+    setBusy(true);
+    setErr("");
+    const res = await api('/api/crew', { body: { name, pin } });
+    setBusy(false);
+    if (!res.ok) { setErr(res.error); return false; }
+    await load();
+    onCrewChanged?.();
+    return true;
+  };
+
+  const add = async () => {
+    if (await savePin(nf.name.trim(), nf.pin)) { setNf({ name: "", pin: "" }); setShowAdd(false); }
+  };
+
+  const resetSubmit = async () => {
+    if (resetFor && await savePin(resetFor, resetPin)) { setResetFor(null); setResetPin(""); }
+  };
+
+  const toggle = async (name: string, active: boolean) => {
+    setErr("");
+    const res = await api('/api/crew', { method: 'PATCH', body: { name, active } });
+    if (!res.ok) { setErr(res.error); return; }
+    await load();
+    onCrewChanged?.();
+  };
+
+  const pinInput = (value: string, onChange: (v: string) => void) => (
+    <div style={{ marginBottom: 14 }}>
+      <label style={S.label}>4-digit PIN</label>
+      <input value={value} inputMode="numeric" maxLength={4} placeholder="e.g. 7181"
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))}
+        style={{ ...S.input, letterSpacing: 6, fontFamily: "monospace", fontSize: 18 }} />
+    </div>
+  );
+
+  return (
+    <div style={{ width: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div>
+          <h2 style={{ color: "#1e293b", margin: 0, fontSize: 24, fontWeight: 800 }}>Crew</h2>
+          <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: 14 }}>{crew.filter((e: any) => e.is_active).length} active / {crew.length} total</p>
+        </div>
+        <Btn onClick={() => { setErr(""); setShowAdd(true); }}>+ Add Crew Member</Btn>
+      </div>
+      {err && !modalOpen && (
+        <div style={{ ...S.card, borderLeft: "4px solid #dc2626", marginBottom: 16, padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <p style={{ color: "#dc2626", margin: 0, fontSize: 13, fontWeight: 600, flex: 1 }}>{err}</p>
+          <button onClick={() => setErr("")} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+        </div>
+      )}
+
+      <Modal open={showAdd} onClose={() => setShowAdd(false)}>
+        <h3 style={{ color: "#1e293b", marginTop: 0, fontSize: 20, fontWeight: 700 }}>Add Crew Member</h3>
+        <div style={{ marginBottom: 14 }}>
+          <label style={S.label}>Full Name</label>
+          <input value={nf.name} placeholder="e.g. Tim Larkin" onChange={(e) => setNf((p) => ({ ...p, name: e.target.value }))} style={S.input} />
+        </div>
+        {pinInput(nf.pin, (v) => setNf((p) => ({ ...p, pin: v })))}
+        <p style={{ color: "#94a3b8", fontSize: 12, margin: "0 0 14px" }}>
+          The last four digits of their phone number keeps it easy to remember. Adding a name that already exists resets that person&apos;s PIN and reactivates them.
+        </p>
+        {err && <p style={{ color: "#dc2626", fontSize: 13, margin: "0 0 12px", fontWeight: 500 }}>{err}</p>}
+        <Btn onClick={add} disabled={busy} style={{ width: "100%" }}>{busy ? "Saving..." : "Add Crew Member"}</Btn>
+      </Modal>
+
+      <Modal open={resetFor !== null} onClose={() => { setResetFor(null); setResetPin(""); }}>
+        <h3 style={{ color: "#1e293b", marginTop: 0, fontSize: 20, fontWeight: 700 }}>Reset PIN</h3>
+        <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 14px" }}>New PIN for <strong>{resetFor}</strong>. Their old PIN stops working immediately.</p>
+        {pinInput(resetPin, setResetPin)}
+        {err && <p style={{ color: "#dc2626", fontSize: 13, margin: "0 0 12px", fontWeight: 500 }}>{err}</p>}
+        <Btn onClick={resetSubmit} disabled={busy} style={{ width: "100%" }}>{busy ? "Saving..." : "Save New PIN"}</Btn>
+      </Modal>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 10 }}>
+        {crew.map((e: any) => (
+          <div key={e.name} style={{ ...S.card, opacity: e.is_active ? 1 : 0.55, transition: "all 0.2s" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flex: 1 }}>
+                <div style={{ width: 40, height: 40, borderRadius: "50%", background: e.is_active ? "linear-gradient(135deg, #dc2626, #b91c1c)" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", color: e.is_active ? "#fff" : "#94a3b8", fontWeight: 700, flexShrink: 0 }}>{e.name[0]}</div>
+                <div>
+                  <p style={{ color: "#1e293b", margin: 0, fontWeight: 700 }}>{e.name}</p>
+                  <p style={{ color: "#94a3b8", margin: "2px 0 0", fontSize: 12 }}>
+                    Added {formatDate(e.created_at)}
+                    {onClock.has(e.name) && <span style={{ color: "#15803d", fontWeight: 700 }}> · On the clock</span>}
+                    {!e.is_active && <span style={{ color: "#b45309", fontWeight: 700 }}> · Inactive</span>}
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                {e.is_active && (
+                  <button onClick={() => { setErr(""); setResetPin(""); setResetFor(e.name); }} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 12px", color: "#475569", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Reset PIN</button>
+                )}
+                <button onClick={() => toggle(e.name, !e.is_active)} style={{ background: e.is_active ? "#fef2f2" : "#f0fdf4", border: "1px solid " + (e.is_active ? "#fecaca" : "#bbf7d0"), borderRadius: 8, padding: "6px 12px", color: e.is_active ? "#dc2626" : "#15803d", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{e.is_active ? "Deactivate" : "Reactivate"}</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
   const { employees: rosterNames, managers: managerNames } = useRoster();
   const [emp, setEmp] = useState<any>(null);
   const [vehicle, setVehicle] = useState("");
@@ -1683,8 +1876,13 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
 
     const res = await api('/api/auth/manager', { body: { pin: v } });
     setMgrPin("");
-    if (res.ok) setExportAuthed(true);
-    else setMgrErr(res.error);
+    if (!res.ok) { setMgrErr(res.error); return; }
+    setExportAuthed(true);
+    // Submitted checklists are fetched here rather than on mount: /api/eod is
+    // manager-only, so before this PIN there is no session allowed to read them.
+    // Without this the export ran against an empty list and produced a workbook
+    // with headers and no rows.
+    await onExportAuthed?.();
   };
 
   const closeExport = () => { setExportOpen(false); setExportAuthed(false); setMgrPin(""); setMgrErr(""); };
@@ -1960,6 +2158,11 @@ function EODChecklist({ checklists, onSubmitChecklist }: any) {
 
 export default function App() {
   const [page, setPage] = useState(0);
+  // The crew view (Clock In/Out, Photos, End of Day) and the manager view
+  // (Active Board, Pay Period, Crew, Job Sites) are separate surfaces: the crew
+  // never sees manager tabs at all. The Manager button in the header enters
+  // manager mode, Back leaves it and drops the manager session state with it.
+  const [managerMode, setManagerMode] = useState(false);
   const [sites, setSites] = useState<any[]>([]);
   const [activeClocks, setActiveClocks] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
@@ -2011,11 +2214,13 @@ export default function App() {
     if (res.ok) setEodChecklists(res.data.checklists);
   }, []);
 
-  useEffect(() => {
-    api<{ employees: string[] }>('/api/roster').then((r) => {
-      if (r.ok) setRoster((p) => ({ ...p, employees: r.data.employees }));
-    });
+  // Exposed to the Crew tab: adding, reactivating or deactivating someone has
+  // to move them in and out of the sign-in dropdown without a page reload.
+  const refreshRoster = useCallback(async () => {
+    const r = await api<{ employees: string[] }>('/api/roster');
+    if (r.ok) setRoster((p) => ({ ...p, employees: r.data.employees }));
   }, []);
+  useEffect(() => { refreshRoster(); }, [refreshRoster]);
 
   /**
    * Polling replaces the realtime subscription.
@@ -2038,9 +2243,10 @@ export default function App() {
     if (managerAuth) { loadData(); loadEod(); }
   }, [managerAuth, loadData, loadEod]);
 
-  // Leaving the manager tabs drops manager state; the cookie still expires on
-  // its own, but this keeps the previous behaviour of re-prompting.
-  useEffect(() => { if (page < 3) setManagerAuth(false); }, [page]);
+  // Leaving manager mode drops manager state; the cookie still expires on its
+  // own, but this keeps the behaviour of re-prompting on the way back in.
+  const enterManagerMode = () => { setManagerMode(true); setPage(0); };
+  const exitManagerMode = () => { setManagerMode(false); setManagerAuth(false); setPage(0); };
 
   const onSubmitChecklist = async (payload: any) => {
     const res = await api<{ checklist: any }>('/api/eod', { body: payload });
@@ -2141,14 +2347,20 @@ export default function App() {
     return {};
   };
 
-  const tabs = [
-    { icon: "Clock", label: "Clock In/Out", mgr: false },
-    { icon: "Camera", label: "Photos", mgr: false },
-    { icon: "Check", label: "End of Day", mgr: false },
-    { icon: "Chart", label: "Active Board", mgr: true },
-    { icon: "List", label: "Pay Period", mgr: true },
-    { icon: "Pin", label: "Job Sites", mgr: true },
+  // Glyphs, not words: the label already says "Clock In/Out", so an icon slot
+  // reading "Clock" above it just looks like a rendering fault.
+  const crewTabs = [
+    { icon: "⏱", label: "Clock In/Out" },
+    { icon: "📷", label: "Photos" },
+    { icon: "✅", label: "End of Day" },
   ];
+  const managerTabs = [
+    { icon: "📊", label: "Active Board" },
+    { icon: "📋", label: "Pay Period" },
+    { icon: "👷", label: "Crew" },
+    { icon: "📍", label: "Job Sites" },
+  ];
+  const tabs = managerMode ? managerTabs : crewTabs;
 
   if (dbLoading) {
     return (
@@ -2166,7 +2378,7 @@ export default function App() {
           {loadError}
         </div>
       )}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <img src="/logo.png" alt="Dean Ryans Landscape / Property Maintenance" style={{ height: 48, width: "auto", display: "block" }} />
           <div>
@@ -2174,29 +2386,47 @@ export default function App() {
             <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", letterSpacing: 1.5, fontWeight: 600 }}>LANDSCAPE / PROPERTY MAINTENANCE</p>
           </div>
         </div>
-      </div>
-      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", display: "flex", overflowX: "auto" as const, padding: "0 8px" }}>
-        {tabs.map((t, i) => (
-          <button key={i} onClick={() => setPage(i)} style={{
-            flex: "1 0 auto", padding: "12px 14px", background: "transparent", border: "none",
-            borderBottom: page === i ? "3px solid #dc2626" : "3px solid transparent",
-            color: page === i ? "#1e293b" : "#94a3b8", cursor: "pointer", fontSize: 12, fontWeight: 700,
-            display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 3,
-            whiteSpace: "nowrap" as const, minWidth: 72
-          }}>
-            <span style={{ fontSize: 14 }}>{t.icon}</span>
-            <span>{t.label}</span>
-            {t.mgr && <span style={{ fontSize: 9, color: "#f59e0b", fontWeight: 600 }}>MANAGER</span>}
+        {managerMode ? (
+          <button onClick={exitManagerMode}
+            style={{ background: "transparent", border: "2px solid #dc2626", borderRadius: 10, padding: "9px 16px", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, letterSpacing: 0.5, flexShrink: 0 }}>
+            ← Back
           </button>
-        ))}
+        ) : (
+          <button onClick={enterManagerMode}
+            style={{ background: "linear-gradient(135deg, #dc2626, #b91c1c)", border: "none", borderRadius: 10, padding: "10px 18px", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, letterSpacing: 0.5, flexShrink: 0, boxShadow: "0 2px 8px rgba(220,38,38,0.35)" }}>
+            Manager
+          </button>
+        )}
       </div>
+      {/* No tab bar on the manager PIN screen: the tabs it would show are the
+          ones the PIN is protecting. */}
+      {(!managerMode || managerAuth) && (
+        <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", display: "flex", overflowX: "auto" as const, padding: "0 8px" }}>
+          {tabs.map((t, i) => (
+            <button key={t.label} onClick={() => setPage(i)} style={{
+              flex: "1 0 auto", padding: "12px 14px", background: "transparent", border: "none",
+              borderBottom: page === i ? "3px solid #dc2626" : "3px solid transparent",
+              color: page === i ? "#1e293b" : "#94a3b8", cursor: "pointer", fontSize: 12, fontWeight: 700,
+              display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 3,
+              whiteSpace: "nowrap" as const, minWidth: 72
+            }}>
+              <span style={{ fontSize: 14 }}>{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ padding: "24px 24px 40px", width: "100%", boxSizing: "border-box" as const }}>
-        {page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} onClockIn={onClockIn} onClockOut={onClockOut} history={history} onAuth={loadData} />}
-        {page === 1 && <PhotoPage sites={sites} />}
-        {page === 2 && <EODChecklist checklists={eodChecklists} onSubmitChecklist={onSubmitChecklist} />}
-        {page === 3 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {page === 4 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} onCreateEntry={onCreateEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {page === 5 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {!managerMode && page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} onClockIn={onClockIn} onClockOut={onClockOut} history={history} onAuth={loadData} />}
+        {!managerMode && page === 1 && <PhotoPage sites={sites} />}
+        {!managerMode && page === 2 && <EODChecklist checklists={eodChecklists} onSubmitChecklist={onSubmitChecklist} onExportAuthed={loadEod} />}
+        {managerMode && !managerAuth && (
+          <PinEntry title="Manager" subtitle="Enter the manager PIN to continue" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />
+        )}
+        {managerMode && managerAuth && page === 0 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {managerMode && managerAuth && page === 1 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} onCreateEntry={onCreateEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {managerMode && managerAuth && page === 2 && <CrewPage managerAuth={managerAuth} setManagerAuth={setManagerAuth} activeClocks={activeClocks} onCrewChanged={refreshRoster} />}
+        {managerMode && managerAuth && page === 3 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
       </div>
     </div>
     </RosterContext.Provider>

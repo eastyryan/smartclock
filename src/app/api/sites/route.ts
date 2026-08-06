@@ -60,6 +60,15 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
+    // 23505 = the unique index on lower(name). Two sites sharing a name are
+    // indistinguishable in the clock-in dropdown, so say which name clashed
+    // rather than reporting a generic save failure.
+    if (error.code === '23505') {
+      return NextResponse.json(
+        { error: `A job site called "${name}" already exists. If it is paused, resume it instead.` },
+        { status: 409 }
+      );
+    }
     console.error('site insert failed:', error.message);
     return NextResponse.json({ error: 'Could not save the job site.' }, { status: 503 });
   }
