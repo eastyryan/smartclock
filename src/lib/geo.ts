@@ -9,7 +9,14 @@ export const DEFAULT_FENCE_RADIUS_M = 359;
 export const MAX_TRUSTED_ACCURACY_M = 1000;
 
 export type Fix = { lat: number; lng: number; accuracy?: number | null };
-export type Site = { lat: number; lng: number; radius?: number | null };
+export type Site = {
+  lat: number;
+  lng: number;
+  radius?: number | null;
+  /** Optional identity — filled when evaluating against the full site list. */
+  id?: number | null;
+  name?: string | null;
+};
 
 /** Great-circle distance in metres. */
 export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -49,6 +56,9 @@ export function evaluateFence(fix: Fix | null | undefined, site: Site): FenceRes
   if (!fix || !Number.isFinite(fix.lat) || !Number.isFinite(fix.lng)) {
     return { distanceM: null, withinFence: null, accuracyM: null };
   }
+  if (!Number.isFinite(site.lat) || !Number.isFinite(site.lng)) {
+    return { distanceM: null, withinFence: null, accuracyM: null };
+  }
 
   const accuracy = Number.isFinite(fix.accuracy) ? Number(fix.accuracy) : null;
   const distance = distanceMeters(fix.lat, fix.lng, site.lat, site.lng);
@@ -65,6 +75,81 @@ export function evaluateFence(fix: Fix | null | undefined, site: Site): FenceRes
     distanceM: Math.round(distance),
     withinFence: inside ? true : confidentlyOutside ? false : null,
     accuracyM: accuracy === null ? null : Math.round(accuracy),
+  };
+}
+
+export type AnyFenceResult = FenceResult & {
+  /** Site they finished at (inside fence), or nearest site when outside all. */
+  siteId: number | null;
+  siteName: string | null;
+};
+
+/**
+ * Clock-out geofence across every active job site.
+ *
+ * Crews often finish the day at a different site than they started. Flagging
+ * them as "away from the job site" against only the clock-in site is wrong —
+ * if they are inside any known site's radius, the punch is on-site.
+ *
+ * Verdict:
+ *   true  - inside at least one site  → siteId/name = that site
+ *   false - confidently outside every site we could evaluate
+ *           → siteId/name = nearest site (distance is from that site)
+ *   null  - no usable fix (or no sites)
+ *
+ * distanceM is always relative to siteId/siteName when those are set.
+ */
+export function evaluateAnyFence(fix: Fix | null | undefined, sites: Site[]): AnyFenceResult {
+  const empty: AnyFenceResult = {
+    distanceM: null,
+    withinFence: null,
+    accuracyM: null,
+    siteId: null,
+    siteName: null,
+  };
+
+  if (!sites.length) return empty;
+
+  const scored = sites.map((site) => ({
+    site,
+    fence: evaluateFence(fix, site),
+  }));
+
+  const insides = scored.filter((s) => s.fence.withinFence === true);
+  if (insides.length) {
+    const best = insides.reduce((a, b) =>
+      (a.fence.distanceM ?? Infinity) <= (b.fence.distanceM ?? Infinity) ? a : b
+    );
+    return {
+      ...best.fence,
+      siteId: best.site.id ?? null,
+      siteName: best.site.name ?? null,
+    };
+  }
+
+  const withDistance = scored.filter((s) => s.fence.distanceM !== null);
+  if (!withDistance.length) {
+    return {
+      ...empty,
+      accuracyM: scored[0]?.fence.accuracyM ?? null,
+    };
+  }
+
+  const nearest = withDistance.reduce((a, b) =>
+    (a.fence.distanceM ?? Infinity) <= (b.fence.distanceM ?? Infinity) ? a : b
+  );
+
+  // No site accepted them. Flag only when we are confident they are outside at
+  // least one site we could measure — vague GPS stays null so digests never
+  // treat a bad reading as evidence.
+  const anyOutside = scored.some((s) => s.fence.withinFence === false);
+
+  return {
+    distanceM: nearest.fence.distanceM,
+    withinFence: anyOutside ? false : null,
+    accuracyM: nearest.fence.accuracyM,
+    siteId: nearest.site.id ?? null,
+    siteName: nearest.site.name ?? null,
   };
 }
 

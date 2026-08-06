@@ -24,10 +24,11 @@ type Row = {
   hours: number | null;
   clock_out_distance_m: number | null;
   clock_out_within_fence: boolean | null;
+  clock_out_site_name: string | null;
 };
 
 const SELECT =
-  'employee_name, site_name, clock_in, clock_out, hours, clock_out_distance_m, clock_out_within_fence';
+  'employee_name, site_name, clock_in, clock_out, hours, clock_out_distance_m, clock_out_within_fence, clock_out_site_name';
 
 export type Digest = { subject: string; text: string; html: string; sms: string };
 
@@ -102,12 +103,37 @@ function stamp(now: Date): string {
   }).format(now).replace(' at ', ', ');
 }
 
-/** One roster line: name, times, job site. */
+/** Sites portion of a roster line: clock-in site, and clock-out site + distance when closed. */
+function sitesPart(r: Row): string {
+  const clockInSite = r.site_name ?? 'unknown site';
+  if (!r.clock_out) return clockInSite;
+
+  const outSite = r.clock_out_site_name;
+  const dist = formatDistance(r.clock_out_distance_m);
+
+  if (!outSite) {
+    return `${clockInSite} → out location unknown`;
+  }
+
+  // Same site in and out — keep it short.
+  if (outSite === clockInSite) {
+    return r.clock_out_distance_m != null
+      ? `${clockInSite} (out ${dist})`
+      : clockInSite;
+  }
+
+  // Finished at a different site (or nearest site when away).
+  return r.clock_out_within_fence === false
+    ? `in ${clockInSite} → out ${dist} from ${outSite}`
+    : `in ${clockInSite} → out ${outSite} (${dist})`;
+}
+
+/** One roster line: name, times, job sites. */
 function line(r: Row): string {
   const times = r.clock_out
     ? `${formatTime(r.clock_in)} to ${formatTime(r.clock_out)}`
     : `in at ${formatTime(r.clock_in)}, still on`;
-  return `${r.employee_name} — ${times} — ${r.site_name ?? 'unknown site'}`;
+  return `${r.employee_name} — ${times} — ${sitesPart(r)}`;
 }
 
 function render(parts: { heading: string; rows: Row[]; flags: string[]; late: Row[] }): { text: string; html: string } {
@@ -167,14 +193,17 @@ export async function buildEveningDigest(now = new Date()): Promise<Digest> {
   const flags: string[] = [];
   const smsFlags: string[] = [];
 
-  // Only shifts we are CONFIDENT were outside the fence. clock_out_within_fence
-  // is null when the GPS fix was too vague to mean anything, and a vague reading
-  // must never be shown to a manager as evidence.
+  // Only shifts we are CONFIDENT were outside every active job site.
+  // clock_out_within_fence is null when GPS was too vague to mean anything, and
+  // a vague reading must never be shown to a manager as evidence. Finishing at a
+  // different site than clock-in is not a flag (see evaluateAnyFence).
   for (const r of closed.filter((r) => r.clock_out_within_fence === false)) {
     const dist = formatDistance(r.clock_out_distance_m);
-    const site = r.site_name ?? 'site';
-    flags.push(`${r.employee_name} — clocked out ${dist} from ${site} at ${formatTime(r.clock_out!)}`);
-    smsFlags.push(`! ${r.employee_name} out ${dist} from ${site} ${formatTime(r.clock_out!)}`);
+    const nearest = r.clock_out_site_name ?? 'nearest job site';
+    flags.push(
+      `${r.employee_name} — clocked out ${dist} from ${nearest} at ${formatTime(r.clock_out!)} (not at any job site)`
+    );
+    smsFlags.push(`! ${r.employee_name} out ${dist} from ${nearest} ${formatTime(r.clock_out!)}`);
   }
   for (const r of open) {
     const h = hoursBetween(r.clock_in, now);

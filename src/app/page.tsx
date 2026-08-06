@@ -61,7 +61,32 @@ function mapRow(row: any) {
     lat: row.lat,
     lng: row.lng,
     notes: row.notes,
+    clockOutSite: row.clock_out_site_name ?? null,
+    clockOutDistanceM: row.clock_out_distance_m ?? null,
+    clockOutWithinFence: row.clock_out_within_fence ?? null,
   };
+}
+
+/** Job-site label for history cards: clock-in site, and clock-out site + distance when known. */
+function siteLabel(h: { site?: string | null; clockOutSite?: string | null; clockOutDistanceM?: number | null; clockOutWithinFence?: boolean | null; clockOut?: string | null }) {
+  const clockIn = h.site || "Unknown site";
+  if (!h.clockOut) return clockIn;
+  if (!h.clockOutSite) return clockIn;
+
+  const dist =
+    h.clockOutDistanceM == null
+      ? null
+      : h.clockOutDistanceM < 1000
+        ? `${Math.round(h.clockOutDistanceM)} m`
+        : `${(h.clockOutDistanceM / 1000).toFixed(1)} km`;
+
+  if (h.clockOutSite === clockIn) {
+    return dist ? `${clockIn} (out ${dist})` : clockIn;
+  }
+  if (h.clockOutWithinFence === false) {
+    return dist ? `In ${clockIn} → out ${dist} from ${h.clockOutSite}` : `In ${clockIn} → away from sites`;
+  }
+  return dist ? `In ${clockIn} → out ${h.clockOutSite} (${dist})` : `In ${clockIn} → out ${h.clockOutSite}`;
 }
 
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -418,7 +443,12 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history, onAuth
       setMsg({ type: "error", text: res.error });
       return;
     }
-    setMsg({ type: "success", text: emp.name + " clocked out - " + res.hours + "h (30min lunch deducted)" });
+    const outSite = res.clockOutSiteName
+      ? res.clockOutDistanceM != null
+        ? ` at ${res.clockOutSiteName} (${res.clockOutDistanceM < 1000 ? Math.round(res.clockOutDistanceM) + " m" : (res.clockOutDistanceM / 1000).toFixed(1) + " km"})`
+        : ` at ${res.clockOutSiteName}`
+      : "";
+    setMsg({ type: "success", text: emp.name + " clocked out" + outSite + " - " + res.hours + "h (30min lunch deducted)" });
     setTimeout(() => { setLoading(false); setEmp(null); setMsg(null); }, 2500);
   };
 
@@ -481,7 +511,7 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history, onAuth
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 14, flexWrap: "wrap" as const }}>
-                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>📍 {h.site}</span>
+                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>📍 {siteLabel(h)}</span>
                       <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>👤 {h.manager || "Unassigned"}</span>
                     </div>
                     {h.notes && (
@@ -829,7 +859,7 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
                       <p style={{ color: "#64748b", margin: "0 0 8px", fontSize: 12 }}>{formatDate(h.clockIn)} · {formatTime(h.clockIn)}–{formatTime(h.clockOut)}</p>
                       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" as const }}>
                         <span style={{ fontSize: 12, color: "#64748b" }}>🕐 30min</span>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>📍 {h.site}</span>
+                        <span style={{ fontSize: 12, color: h.clockOutWithinFence === false ? "#b91c1c" : "#64748b" }}>📍 {siteLabel(h)}</span>
                         <span style={{ fontSize: 12, color: "#64748b" }}>👤 {h.manager || "Unassigned"}</span>
                         {h.status === "pending" && <span style={{ fontSize: 12 }}>⚠️</span>}
                       </div>
@@ -980,7 +1010,9 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
       { header: "Employee", key: "employee", width: 25 },
       { header: "Date", key: "date", width: 14 },
       { header: "Day", key: "day", width: 10 },
-      { header: "Site", key: "site", width: 18 },
+      { header: "Clock In Site", key: "site", width: 18 },
+      { header: "Clock Out Site", key: "clockOutSite", width: 18 },
+      { header: "Out Distance", key: "clockOutDistance", width: 14 },
       { header: "Manager", key: "manager", width: 18 },
       { header: "Clock In", key: "clockIn", width: 12 },
       { header: "Clock Out", key: "clockOut", width: 12 },
@@ -1007,6 +1039,13 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
           date: formatDate(h.clockIn),
           day: new Date(h.clockIn).toLocaleDateString("en-US", { weekday: "short" }),
           site: h.site,
+          clockOutSite: h.clockOutSite || "",
+          clockOutDistance:
+            h.clockOutDistanceM == null
+              ? ""
+              : h.clockOutDistanceM < 1000
+                ? `${Math.round(h.clockOutDistanceM)} m`
+                : `${(h.clockOutDistanceM / 1000).toFixed(1)} km`,
           manager: h.manager,
           clockIn: formatTime(h.clockIn),
           clockOut: h.clockOut ? formatTime(h.clockOut) : "",
@@ -1259,9 +1298,9 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                     <span style={{ fontSize: 14 }}>🍱</span>
                     30min
                   </span>
-                  <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 13, color: h.clockOutWithinFence === false ? "#b91c1c" : "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 14 }}>📍</span>
-                    {h.site}
+                    {siteLabel(h)}
                   </span>
                   <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 14 }}>👤</span>
@@ -2284,13 +2323,23 @@ export default function App() {
     // and flagged for the manager, not refused. See api/clock/out/route.ts.
     const fix = await getFix();
 
-    const res = await api<{ hours: number }>('/api/clock/out', {
+    const res = await api<{
+      hours: number;
+      clockOutSiteName?: string | null;
+      clockOutDistanceM?: number | null;
+      clockOutWithinFence?: boolean | null;
+    }>('/api/clock/out', {
       body: fix ? { lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy } : {},
     });
     if (!res.ok) return { error: res.error };
 
     await loadData();
-    return { hours: res.data.hours };
+    return {
+      hours: res.data.hours,
+      clockOutSiteName: res.data.clockOutSiteName ?? null,
+      clockOutDistanceM: res.data.clockOutDistanceM ?? null,
+      clockOutWithinFence: res.data.clockOutWithinFence ?? null,
+    };
   };
 
   const onApprove = async (id: string) => {

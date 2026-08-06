@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { readSession } from '@/lib/session';
-import { evaluateFence } from '@/lib/geo';
+import { evaluateAnyFence } from '@/lib/geo';
 import { calcHours } from '@/lib/hours';
 
 /**
@@ -14,10 +14,11 @@ import { calcHours } from '@/lib/hours';
  *
  *   - The employee always clocks out successfully and sees a normal
  *     confirmation. No warning, no error, no friction.
- *   - The real GPS fix, distance from the site, and a within-fence verdict are
- *     stored on the row.
- *   - Out-of-fence clock-outs surface on the manager's board and in the 6pm
- *     SMS digest, as the basis for a face-to-face conversation.
+ *   - GPS is matched against EVERY active job site. The site they finished at
+ *     (or nearest site if outside all fences), distance to that site, and a
+ *     within-fence verdict are stored on the row.
+ *   - Crews often finish at a different site than clock-in; only punches
+ *     confidently outside all known sites are flagged in the 6pm digest.
  *
  * Not blocking is a deliberate choice: someone sent home early, or dealing with
  * an emergency, still needs to close their shift. Blocking would generate phone
@@ -63,20 +64,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'You are not currently clocked in.' }, { status: 409 });
   }
 
-  const { data: site } = await supabaseAdmin
+  // Multi-site fence: finishing at any active site counts as on-site.
+  const { data: sites, error: sitesErr } = await supabaseAdmin
     .from('job_sites')
-    .select('lat, lng, radius')
-    .eq('id', open.site_id)
-    .maybeSingle();
+    .select('id, name, lat, lng, radius')
+    .eq('active', true);
+
+  if (sitesErr) {
+    console.error('job sites lookup failed:', sitesErr.message);
+    return NextResponse.json({ error: 'Could not reach the server. Try again.' }, { status: 503 });
+  }
 
   const fix =
     Number.isFinite(Number(body.lat)) && Number.isFinite(Number(body.lng))
       ? { lat: Number(body.lat), lng: Number(body.lng), accuracy: Number(body.accuracy) || null }
       : null;
 
-  const fence = site
-    ? evaluateFence(fix, site)
-    : { distanceM: null, withinFence: null, accuracyM: null };
+  const fence = evaluateAnyFence(fix, sites ?? []);
 
   // Server clock, so a phone with a doctored time cannot inflate a shift.
   const nowISO = new Date().toISOString();
@@ -93,6 +97,8 @@ export async function POST(request: Request) {
       clock_out_accuracy_m: fence.accuracyM,
       clock_out_distance_m: fence.distanceM,
       clock_out_within_fence: fence.withinFence,
+      clock_out_site_id: fence.siteId,
+      clock_out_site_name: fence.siteName,
     })
     .eq('id', open.id);
 
@@ -101,7 +107,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Clock-out did not save. Check your signal and try again.' }, { status: 503 });
   }
 
-  // The response deliberately carries no geofence verdict. The employee gets
-  // the same confirmation either way; the flag is the manager's to see.
-  return NextResponse.json({ ok: true, hours, siteName: open.site_name });
+  // Employee confirmation includes which site GPS resolved to (if any). The
+  // within-fence flag stays manager-only so the UX is never accusatory.
+  return NextResponse.json({
+    ok: true,
+    hours,
+    siteName: open.site_name,
+    clockOutSiteName: fence.siteName,
+    clockOutDistanceM: fence.distanceM,
+    clockOutWithinFence: fence.withinFence,
+  });
 }
