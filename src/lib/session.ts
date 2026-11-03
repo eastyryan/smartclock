@@ -16,7 +16,7 @@ export const SESSION_COOKIE = 'sc_session';
 
 /**
  * Employee sessions are intentionally short. The clock screen resets to the PIN
- * pad after every action, so a punch is a complete interaction — there is no
+ * pad after every action, so a punch is a complete interaction - there is no
  * reason to leave an identity resident on a phone that gets passed around a
  * truck. Managers get longer, since approving a pay period is a sitting task.
  */

@@ -13,7 +13,7 @@ import { evaluateFence } from '@/lib/geo';
  * 2. clock_in is the SERVER's clock. Previously it was new Date() on the
  *    employee's phone, so changing the device time changed the shift length.
  * 3. The employee's REAL coordinates are stored. The old insert wrote
- *    `lat: site.lat, lng: site.lng` — the job site's own position — which was
+ *    `lat: site.lat, lng: site.lng` - the job site's own position - which was
  *    identical for every shift there and proved nothing.
  */
 export async function POST(request: Request) {

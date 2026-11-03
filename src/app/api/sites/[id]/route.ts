@@ -41,7 +41,7 @@ export async function PATCH(request: Request, { params }: Ctx) {
  *
  * Refuses when timecards reference the site. clock_events denormalises
  * site_name/site_id with no foreign key, so a hard delete used to leave
- * dangling references behind — the reason the edit modal has to merge historical
+ * dangling references behind - the reason the edit modal has to merge historical
  * site names into its dropdown. Pausing keeps the history intact and is what
  * the manager almost always actually wants.
  */
@@ -65,7 +65,7 @@ export async function DELETE(_request: Request, { params }: Ctx) {
   if ((count ?? 0) > 0) {
     return NextResponse.json(
       {
-        error: `This site has ${count} time card${count === 1 ? '' : 's'} attached, so deleting it would break that history. Pause it instead — it disappears from the clock-in list but the records stay.`,
+        error: `This site has ${count} time card${count === 1 ? '' : 's'} attached, so deleting it would break that history. Pause it instead - it disappears from the clock-in list but the records stay.`,
       },
       { status: 409 }
     );

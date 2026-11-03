@@ -11,7 +11,7 @@ export const maxDuration = 30;
  * Manager digests: 9:30 AM and 6:00 PM, Toronto time.
  *
  * Schedules are UTC-only and have no timezone support, so a fixed UTC schedule
- * would drift by an hour twice a year — the 6 PM digest would start arriving at
+ * would drift by an hour twice a year - the 6 PM digest would start arriving at
  * 5 PM every November. The workflow therefore sweeps across BOTH candidate UTC
  * windows and this handler checks the real Toronto wall clock.
  *
@@ -57,7 +57,7 @@ function slotFor(hour: number, minute: number): 'morning' | 'evening' | null {
  * Hand a claimed slot back so a later sweep can retry it.
  *
  * Called when a claim was taken but nothing was actually delivered. Without
- * this, one transient failure would burn the slot for the whole day — the
+ * this, one transient failure would burn the slot for the whole day - the
  * claim would say "sent" when nothing was.
  */
 async function releaseClaim(dateKey: string, kind: string, skip: boolean): Promise<void> {
@@ -70,7 +70,7 @@ async function releaseClaim(dateKey: string, kind: string, skip: boolean): Promi
   if (error) console.error('digest claim release failed:', error.message);
 }
 
-/** "a***@rogers.com", "***0123" — enough to identify, not enough to publish. */
+/** "a***@rogers.com", "***0123" - enough to identify, not enough to publish. */
 function mask(recipient: string): string {
   if (recipient.includes('@')) {
     const [user, domain] = recipient.split('@');
@@ -117,7 +117,7 @@ export async function GET(request: Request) {
 
   // Claim the slot BEFORE building anything. The workflow sweeps every 30
   // minutes to survive delayed runs, so on a normal day most fires land here
-  // and stop — no Supabase reads for the roster, no provider calls.
+  // and stop - no Supabase reads for the roster, no provider calls.
   //
   // A dry run must never claim (it would suppress the real send), and an
   // explicit force is the manual recovery path, so it bypasses the check.
@@ -132,11 +132,11 @@ export async function GET(request: Request) {
         return NextResponse.json({ skipped: true, reason: 'already sent', kind, dateKey });
       }
       // Anything else (table missing, network) must not silently swallow the
-      // digest — that failure mode is exactly what we are fixing. Fail with a
+      // digest - that failure mode is exactly what we are fixing. Fail with a
       // non-200 so the workflow goes red instead of green.
       console.error('digest claim failed:', claimError.message);
       const hint = /digest_sends|relation|schema cache/i.test(claimError.message)
-        ? ' — run supabase/migrations/0007_digest_sends.sql in the Supabase SQL editor'
+        ? ' - run supabase/migrations/0007_digest_sends.sql in the Supabase SQL editor'
         : '';
       return NextResponse.json(
         { error: `could not claim digest slot: ${claimError.message}${hint}` },
@@ -163,8 +163,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ dryRun: true, kind, dateKey, ...digest });
   }
 
-  // Recipients come from the managers table, so changing who gets the digest —
-  // or which channel they get it on — is a database update rather than a deploy.
+  // Recipients come from the managers table, so changing who gets the digest -
+  // or which channel they get it on - is a database update rather than a deploy.
   // A manager with both an email and a phone gets both.
   const { data: managers, error } = await supabaseAdmin
     .from('managers')
@@ -182,8 +182,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ sent: 0, warning: 'no active managers have an email or phone set' });
   }
 
-  // Email and SMS are dispatched independently so one channel failing — a
-  // Twilio spend cap, an unapproved A2P campaign, a Resend outage — cannot
+  // Email and SMS are dispatched independently so one channel failing - a
+  // Twilio spend cap, an unapproved A2P campaign, a Resend outage - cannot
   // suppress the other. The email is the complete record; the SMS is a nudge.
   type Delivery = { channel: 'email' | 'sms'; to: string } & SendResult;
   const jobs: Promise<Delivery>[] = [];
@@ -239,7 +239,7 @@ export async function GET(request: Request) {
   const errors = failed.map((r) => ({ channel: r.channel, to: mask(r.to), error: r.error }));
 
   // A non-200 on failure makes the miss visible in Vercel's cron log rather
-  // than silently succeeding — the whole point is that a missing digest must
+  // than silently succeeding - the whole point is that a missing digest must
   // not read as "nothing to report".
   return NextResponse.json(
     { kind, dateKey, sent, failed: failed.length, errors },

@@ -86,8 +86,8 @@ export function toE164(raw: string | null | undefined): string | null {
 /**
  * Force a message into the GSM-7 character set.
  *
- * This is cost control, not cosmetics. A single character outside GSM-7 — an
- * em dash, a curly quote, the "o-circumflex" in a site name — flips the entire
+ * This is cost control, not cosmetics. A single character outside GSM-7 - an
+ * em dash, a curly quote, the "o-circumflex" in a site name - flips the entire
  * message to UCS-2 encoding, which drops the per-segment budget from 153
  * characters to 67. One stray dash inherited from the email copy can therefore
  * double what every digest costs to send, forever, with nothing looking wrong.
@@ -138,7 +138,7 @@ export async function sendSms(opts: { to: string; body: string }): Promise<SendR
     const body = await res.json().catch(() => null);
 
     if (!res.ok) {
-      // Twilio returns {code, message}. The code is the half worth keeping —
+      // Twilio returns {code, message}. The code is the half worth keeping -
       // 21610 recipient replied STOP, 21408 region not enabled on the account,
       // 30034 sending from a number with no approved A2P campaign.
       const err = body as { code?: number; message?: string } | null;

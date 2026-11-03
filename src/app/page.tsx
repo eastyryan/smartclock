@@ -2,9 +2,11 @@
 import ExcelJS from 'exceljs';
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { api, getFix } from '@/lib/api';
+import { Activity, AlertTriangle, CalendarRange, Camera, Check, ClipboardCheck, Clock, Coffee, Delete, Image as ImageIcon, LayoutDashboard, Lock, MapPin, Pencil, Truck, User, Users, Wrench, X } from 'lucide-react';
+import AdminDashboard from '@/components/admin-dashboard';
 
 /**
- * The employee roster and PINs used to live here as module constants — in a
+ * The employee roster and PINs used to live here as module constants - in a
  * "use client" file, so all 23 names, all 23 PINs, and the manager PIN shipped
  * to every browser and were readable via View Source.
  *
@@ -18,7 +20,7 @@ const RosterContext = createContext<{ employees: string[]; managers: string[] }>
 const useRoster = () => useContext(RosterContext);
 
 // Job sites live in the database. The seed for a fresh environment is in
-// supabase/seed_job_sites.sql — the client used to insert these itself whenever
+// supabase/seed_job_sites.sql - the client used to insert these itself whenever
 // it observed an empty table, which double-seeded if two phones opened at once.
 
 const FENCE_RADIUS = 359;
@@ -184,15 +186,15 @@ async function uploadToGoogleDrive(files: any[], siteName: string, employeeName:
 }
 
 const S = {
-  card: { background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" } as React.CSSProperties,
-  input: { width: "100%", padding: "11px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, color: "#1e293b", fontSize: 15, outline: "none", boxSizing: "border-box" as const },
-  label: { display: "block", fontSize: 13, color: "#64748b", marginBottom: 4, fontWeight: 600 } as React.CSSProperties,
+  card: { background: "#fff", borderRadius: 16, border: "1px solid #e4e4e7", padding: 20, boxShadow: "0 1px 2px rgba(24,24,27,0.04), 0 1px 1px rgba(24,24,27,0.02)" } as React.CSSProperties,
+  input: { width: "100%", minHeight: 48, padding: "12px 14px", background: "#fff", border: "1px solid #d4d4d8", borderRadius: 12, color: "#18181b", fontSize: 16, outline: "none", boxSizing: "border-box" as const },
+  label: { display: "block", fontSize: 13, color: "#52525b", marginBottom: 6, fontWeight: 600 } as React.CSSProperties,
 };
 
 function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
   if (!open) return null;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, padding: 16 }} onClick={onClose}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(24,24,27,0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, padding: 16 }} onClick={onClose}>
       <div style={{ background: "#fff", borderRadius: 16, padding: 28, maxWidth: 460, width: "100%", maxHeight: "80vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         {children}
       </div>
@@ -223,13 +225,13 @@ function Select({ label, options, placeholder, ...props }: any) {
 
 function Btn({ children, variant = "primary", ...props }: any) {
   const styles: any = {
-    primary: { background: "linear-gradient(135deg, #dc2626, #b91c1c)", color: "#fff", border: "none" },
-    success: { background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", border: "none" },
-    outline: { background: "#fff", color: "#475569", border: "1px solid #d1d5db" },
-    ghost: { background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0" },
+    primary: { background: "#dc2626", color: "#fff", border: "1px solid #dc2626", boxShadow: "0 1px 2px rgba(220,38,38,0.25)" },
+    success: { background: "#16a34a", color: "#fff", border: "1px solid #16a34a", boxShadow: "0 1px 2px rgba(22,163,74,0.25)" },
+    outline: { background: "#fff", color: "#3f3f46", border: "1px solid #d4d4d8" },
+    ghost: { background: "#f4f4f5", color: "#3f3f46", border: "1px solid #f4f4f5" },
   };
   return (
-    <button {...props} style={{ padding: "11px 22px", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s", opacity: props.disabled ? 0.5 : 1, ...(styles[variant] || styles.primary), ...(props.style || {}) }}>
+    <button {...props} style={{ minHeight: 48, padding: "12px 22px", borderRadius: 12, fontSize: 15, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.15s", opacity: props.disabled ? 0.5 : 1, ...(styles[variant] || styles.primary), ...(props.style || {}) }}>
       {children}
     </button>
   );
@@ -263,11 +265,11 @@ function PinPad({ value, onChange }: { value: string; onChange: (v: string) => v
           </div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, maxWidth: 280, margin: "0 auto" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, maxWidth: 300, margin: "0 auto" }}>
         {keys.map((k, i) => (
           <button key={i} onClick={() => press(k)} disabled={!k}
             style={{
-              height: 56, borderRadius: 12, border: "1px solid #e2e8f0",
+              height: 64, borderRadius: 16, border: "1px solid #e4e4e7",
               background: k === "del" ? "#fef2f2" : k ? "#fff" : "transparent",
               color: k === "del" ? "#dc2626" : "#1e293b",
               fontSize: k === "del" ? 16 : 24, fontWeight: 700,
@@ -275,7 +277,7 @@ function PinPad({ value, onChange }: { value: string; onChange: (v: string) => v
               visibility: k ? "visible" : "hidden",
               userSelect: "none"
             }}>
-            {k === "del" ? "⌫" : k}
+            {k === "del" ? <Delete size={22} strokeWidth={2} aria-hidden="true" /> : k}
           </button>
         ))}
       </div>
@@ -307,21 +309,21 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
 
   /**
    * The PIN is verified by the server now, not by comparing against a constant
-   * in this bundle. The route also throttles attempts — the old pad allowed
+   * in this bundle. The route also throttles attempts - the old pad allowed
    * unlimited guesses against a 4-digit space.
    *
    * This effect depends on `pin` ONLY, which matters more than it looks.
    *
    * It previously also depended on `checking` and `onVerify`, and deadlocked on
    * the first attempt: setChecking(true) changed `checking`, which re-ran the
-   * effect, whose cleanup set cancelled = true on the original run — so the
+   * effect, whose cleanup set cancelled = true on the original run - so the
    * in-flight request returned early and never cleared the flag. The re-run then
    * bailed on `checking` being true, leaving the pad stuck on "Checking..."
    * forever. `onVerify` did the same thing on the manager screens, where it is
    * an inline arrow with a fresh identity every render.
    *
    * There is no cancellation now. It was cancelling the very request it needed,
-   * and a PIN check that survives an unmount is harmless — the worst case is a
+   * and a PIN check that survives an unmount is harmless - the worst case is a
    * setState on an unmounted component, which React 18+ ignores.
    */
   useEffect(() => {
@@ -350,7 +352,7 @@ function PinEntry({ title, subtitle, onVerify, employees, type = "employee" }: a
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
       <div style={{ ...S.card, maxWidth: 400, width: "100%", textAlign: "center" as const, padding: "28px 24px 24px" }}>
         <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #dc2626, #b91c1c)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 24 }}>
-          {type === "manager" ? "🔒" : "👤"}
+          {type === "manager" ? <Lock size={24} strokeWidth={2} aria-hidden="true" /> : <User size={24} strokeWidth={2} aria-hidden="true" />}
         </div>
         <h2 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20 }}>{title}</h2>
         <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 20 }}>{subtitle || (type === "manager" ? "Enter manager PIN" : "Select your name, then enter your PIN")}</p>
@@ -455,8 +457,8 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history, onAuth
   // On PIN verification, refetch immediately. The app's first loadData() ran
   // before any session existed (401 -> empty activeClocks/history), and the
   // only other refresh is the 20s poll. Without this an employee who just
-  // signed in sees the stale empty snapshot — "Not currently clocked in", no
-  // hours, no time cards — until the next poll tick, which reads as lag and
+  // signed in sees the stale empty snapshot - "Not currently clocked in", no
+  // hours, no time cards - until the next poll tick, which reads as lag and
   // hides the Clock Out button they came to use. Mirrors the manager refetch.
   if (!emp) return <PinEntry title="Clock In / Out" subtitle="Verify your identity to start" onVerify={(e: any) => { setEmp(e); onAuth?.(); }} employees={rosterNames} />;
 
@@ -503,7 +505,7 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history, onAuth
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <div>
                         <p style={{ color: "#1e293b", margin: 0, fontWeight: 700, fontSize: 15 }}>{formatDate(h.clockIn)}</p>
-                        <p style={{ color: "#64748b", margin: "2px 0 0", fontSize: 12 }}>{formatTime(h.clockIn)} – {h.clockOut ? formatTime(h.clockOut) : "—"}</p>
+                        <p style={{ color: "#64748b", margin: "2px 0 0", fontSize: 12 }}>{formatTime(h.clockIn)} – {h.clockOut ? formatTime(h.clockOut) : "-"}</p>
                       </div>
                       <div style={{ textAlign: "right" as const }}>
                         <p style={{ color: "#1e293b", margin: 0, fontWeight: 800, fontSize: 18 }}>{h.hours}h</p>
@@ -511,12 +513,12 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history, onAuth
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 14, flexWrap: "wrap" as const }}>
-                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>📍 {siteLabel(h)}</span>
-                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}>👤 {h.manager || "Unassigned"}</span>
+                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}><MapPin size={16} strokeWidth={2} aria-hidden="true" /> {siteLabel(h)}</span>
+                      <span style={{ fontSize: 12, color: "#475569", display: "inline-flex", alignItems: "center", gap: 4 }}><User size={16} strokeWidth={2} aria-hidden="true" /> {h.manager || "Unassigned"}</span>
                     </div>
                     {h.notes && (
                       <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginTop: 10, display: "flex", gap: 8, alignItems: "flex-start" }}>
-                        <span style={{ fontSize: 14 }}>✏️</span>
+                        <span style={{ fontSize: 14 }}><Pencil size={16} strokeWidth={2} aria-hidden="true" /></span>
                         <p style={{ color: "#78350f", margin: 0, fontSize: 12, lineHeight: 1.4, whiteSpace: "pre-wrap" as const }}>
                           <strong>Manager note:</strong> {h.notes}
                         </p>
@@ -541,8 +543,11 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history, onAuth
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
       <div style={{ maxWidth: 480, width: "100%" }}>
         {msg && (
-          <div style={{ ...S.card, textAlign: "center" as const, marginBottom: 20, borderLeft: "4px solid " + (msg.type === "success" ? "#16a34a" : "#dc2626") }}>
-            <p style={{ color: "#1e293b", margin: 0, fontSize: 16, fontWeight: 500 }}>{msg.text}</p>
+          <div role="status" aria-live="polite" style={{ ...S.card, textAlign: "center" as const, marginBottom: 20, padding: "32px 24px", borderColor: msg.type === "success" ? "#bbf7d0" : "#fecaca", background: msg.type === "success" ? "#f0fdf4" : "#fef2f2" }}>
+            <div style={{ width: 64, height: 64, borderRadius: "50%", margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", background: msg.type === "success" ? "#16a34a" : "#dc2626" }}>
+              {msg.type === "success" ? <Check size={32} strokeWidth={2.5} aria-hidden="true" /> : <AlertTriangle size={30} strokeWidth={2.25} aria-hidden="true" />}
+            </div>
+            <p style={{ color: "#18181b", margin: 0, fontSize: 18, fontWeight: 600, lineHeight: 1.4 }}>{msg.text}</p>
             {msg.type === "error" && (
               // Errors do not auto-dismiss: the punch did not save, and the
               // employee needs to see that and deliberately retry.
@@ -566,7 +571,7 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history, onAuth
                   <p style={{ color: "#64748b", fontSize: 14, marginBottom: 4 }}>Clocked in since</p>
                   <p style={{ color: "#1e293b", fontSize: 28, fontWeight: 800, margin: "0 0 4px" }}>{formatTime(isClockedIn.clockIn)}</p>
                   <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 20 }}>at {isClockedIn.site}</p>
-                  <Btn onClick={clockOut} disabled={loading} style={{ width: "100%" }}>Clock Out</Btn>
+                  <Btn onClick={clockOut} disabled={loading} style={{ width: "100%", minHeight: 60, fontSize: 18 }}>{loading ? "Saving..." : "Clock Out"}</Btn>
                   <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 10 }}>30 minutes will be automatically deducted for lunch</p>
                 </div>
               ) : (
@@ -585,7 +590,7 @@ function ClockPage({ sites, activeClocks, onClockIn, onClockOut, history, onAuth
                       </p>
                     </div>
                   )}
-                  <Btn variant="success" onClick={clockIn} disabled={!site || geoStatus !== "verified" || loading} style={{ width: "100%" }}>Clock In</Btn>
+                  <Btn variant="success" onClick={clockIn} disabled={!site || geoStatus !== "verified" || loading} style={{ width: "100%", minHeight: 60, fontSize: 18 }}>{loading ? "Saving..." : "Clock In"}</Btn>
                 </>
               )}
             </div>
@@ -684,12 +689,12 @@ function PhotoPage({ sites }: any) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
             <button type="button" onClick={() => cameraRef.current?.click()}
               style={{ padding: "16px 12px", borderRadius: 12, border: "2px dashed #d1d5db", background: "#fafbfc", cursor: "pointer", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 24 }}>📷</span>
+              <span style={{ fontSize: 24 }}><Camera size={16} strokeWidth={2} aria-hidden="true" /></span>
               <span style={{ color: "#1e293b", fontSize: 13, fontWeight: 600 }}>Take Photo</span>
             </button>
             <button type="button" onClick={() => fileRef.current?.click()}
               style={{ padding: "16px 12px", borderRadius: 12, border: "2px dashed #d1d5db", background: "#fafbfc", cursor: "pointer", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 24 }}>🖼️</span>
+              <span style={{ fontSize: 24 }}><ImageIcon size={16} strokeWidth={2} aria-hidden="true" /></span>
               <span style={{ color: "#1e293b", fontSize: 13, fontWeight: 600 }}>Choose from Gallery</span>
             </button>
             <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e: any) => handleFiles(e.target.files)} />
@@ -838,7 +843,7 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
                   {active ? "SINCE " + formatTime(active.clockIn) : "NOT CLOCKED IN"}
                 </p>
               </div>
-              {active && <p style={{ color: "#86efac", margin: "8px 0 0", fontSize: 11 }}>📍 {active.site}</p>}
+              {active && <p style={{ color: "#86efac", margin: "8px 0 0", fontSize: 11 }}><MapPin size={16} strokeWidth={2} aria-hidden="true" /> {active.site}</p>}
             </div>
           );
         })}
@@ -858,10 +863,10 @@ function ActiveBoard({ activeClocks, history, managerAuth, setManagerAuth }: any
                       <p style={{ color: "#1e293b", margin: "0 0 3px", fontWeight: 700, fontSize: 15 }}>{h.employee}</p>
                       <p style={{ color: "#64748b", margin: "0 0 8px", fontSize: 12 }}>{formatDate(h.clockIn)} · {formatTime(h.clockIn)}–{formatTime(h.clockOut)}</p>
                       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" as const }}>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>🕐 30min</span>
-                        <span style={{ fontSize: 12, color: h.clockOutWithinFence === false ? "#b91c1c" : "#64748b" }}>📍 {siteLabel(h)}</span>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>👤 {h.manager || "Unassigned"}</span>
-                        {h.status === "pending" && <span style={{ fontSize: 12 }}>⚠️</span>}
+                        <span style={{ fontSize: 12, color: "#64748b" }}><Clock size={16} strokeWidth={2} aria-hidden="true" /> 30min</span>
+                        <span style={{ fontSize: 12, color: h.clockOutWithinFence === false ? "#b91c1c" : "#64748b" }}><MapPin size={16} strokeWidth={2} aria-hidden="true" /> {siteLabel(h)}</span>
+                        <span style={{ fontSize: 12, color: "#64748b" }}><User size={16} strokeWidth={2} aria-hidden="true" /> {h.manager || "Unassigned"}</span>
+                        {h.status === "pending" && <span style={{ fontSize: 12 }}><AlertTriangle size={16} strokeWidth={2} aria-hidden="true" /></span>}
                       </div>
                     </div>
                     <div style={{ textAlign: "right" as const, flexShrink: 0 }}>
@@ -943,7 +948,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
 
     // Title row
     summary.spliceRows(1, 0, [
-      "Dean Ryans Pay Period — " + periodLabel + (selEmployee !== "all" ? " — " + selEmployee : ""),
+      "Dean Ryans Pay Period - " + periodLabel + (selEmployee !== "all" ? " - " + selEmployee : ""),
     ]);
     summary.mergeCells("A1:F1");
     const title = summary.getCell("A1");
@@ -1291,25 +1296,25 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                 {/* Detail row */}
                 <div style={{ display: "flex", gap: 18, flexWrap: "wrap" as const, marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #f1f5f9" }}>
                   <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 14 }}>🕐</span>
+                    <span style={{ fontSize: 14 }}><Clock size={16} strokeWidth={2} aria-hidden="true" /></span>
                     {formatTime(h.clockIn)} – {formatTime(h.clockOut)}
                   </span>
                   <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 14 }}>🍱</span>
+                    <span style={{ fontSize: 14 }}><Coffee size={16} strokeWidth={2} aria-hidden="true" /></span>
                     30min
                   </span>
                   <span style={{ fontSize: 13, color: h.clockOutWithinFence === false ? "#b91c1c" : "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 14 }}>📍</span>
+                    <span style={{ fontSize: 14 }}><MapPin size={16} strokeWidth={2} aria-hidden="true" /></span>
                     {siteLabel(h)}
                   </span>
                   <span style={{ fontSize: 13, color: "#475569", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 14 }}>👤</span>
+                    <span style={{ fontSize: 14 }}><User size={16} strokeWidth={2} aria-hidden="true" /></span>
                     {h.manager || "Unassigned"}
                   </span>
                 </div>
                 {h.notes && (
                   <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginBottom: 14, display: "flex", gap: 8, alignItems: "flex-start" }}>
-                    <span style={{ fontSize: 14 }}>✏️</span>
+                    <span style={{ fontSize: 14 }}><Pencil size={16} strokeWidth={2} aria-hidden="true" /></span>
                     <p style={{ color: "#78350f", margin: 0, fontSize: 13, fontWeight: 500, lineHeight: 1.4, whiteSpace: "pre-wrap" as const }}>
                       <strong>Manager note:</strong> {h.notes}
                     </p>
@@ -1317,7 +1322,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                 )}
                 {h.status === "edited" && (
                   <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 600, color: "#7c3aed" }}>
-                    This shift was edited — approve or reject to finalize it.
+                    This shift was edited - approve or reject to finalize it.
                   </p>
                 )}
                 <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" as const }}>
@@ -1336,7 +1341,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                       onClick={() => doApprove(h)}
                       style={{ flex: 1, minWidth: 160, padding: "11px 20px", background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", border: "none", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                     >
-                      <span style={{ fontSize: 15 }}>✓</span> Approve
+                      <span style={{ fontSize: 15 }}><Check size={16} strokeWidth={2} aria-hidden="true" /></span> Approve
                     </button>
                   )}
                   {showReject && (
@@ -1344,14 +1349,14 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
                       onClick={() => onReject(h.id)}
                       style={{ flex: showApprove ? "0 1 auto" : 1, minWidth: 160, padding: "11px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                     >
-                      <span style={{ fontSize: 15 }}>✗</span> Reject
+                      <span style={{ fontSize: 15 }}><X size={16} strokeWidth={2} aria-hidden="true" /></span> Reject
                     </button>
                   )}
                   <button
                     onClick={() => openEdit(h)}
                     style={{ flex: !showApprove && !showReject ? 1 : "0 1 auto", minWidth: 120, padding: "11px 16px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 10, color: "#475569", cursor: "pointer", fontWeight: 700, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                   >
-                    <span style={{ fontSize: 14 }}>✎</span> Edit
+                    <span style={{ fontSize: 14 }}><Pencil size={16} strokeWidth={2} aria-hidden="true" /></span> Edit
                   </button>
                 </div>
               </div>
@@ -1443,7 +1448,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
 
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 18 }}>
               <p style={{ margin: 0, color: "#b45309", fontSize: 12, fontWeight: 600 }}>
-                ✏️ Saving marks this shift <strong>Edited</strong> — approve or reject it afterward to finalize. The reason and what changed are shown to the employee.
+                <Pencil size={16} strokeWidth={2} aria-hidden="true" /> Saving marks this shift <strong>Edited</strong> - approve or reject it afterward to finalize. The reason and what changed are shown to the employee.
               </p>
             </div>
 
@@ -1460,7 +1465,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
         {creating && (
           <>
             <h3 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>Create Time Card</h3>
-            <p style={{ color: "#94a3b8", margin: "0 0 20px", fontSize: 13 }}>Manually add a shift for an employee — no location check required.</p>
+            <p style={{ color: "#94a3b8", margin: "0 0 20px", fontSize: 13 }}>Manually add a shift for an employee - no location check required.</p>
 
             <div style={{ marginBottom: 14 }}>
               <label style={{ ...S.label, textTransform: "uppercase" as const, letterSpacing: 0.5, fontSize: 11 }}>Employee</label>
@@ -1550,7 +1555,7 @@ function PayPeriod({ history, sites, onApprove, onReject, onEditEntry, onCreateE
 
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 18 }}>
               <p style={{ margin: 0, color: "#b45309", fontSize: 12, fontWeight: 600 }}>
-                ✏️ This card will be added as Pending for your review.
+                <Pencil size={16} strokeWidth={2} aria-hidden="true" /> This card will be added as Pending for your review.
               </p>
             </div>
 
@@ -1582,7 +1587,7 @@ function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, s
 
   if (!managerAuth) return <PinEntry title="Job Sites" subtitle="Manager access required" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />;
 
-  // Fills the coordinate fields from the phone's GPS — stand mid-site and tap.
+  // Fills the coordinate fields from the phone's GPS - stand mid-site and tap.
   // Same getFix the clock-in flow uses, so permissions behave identically.
   const useMyLocation = async () => {
     setLocBusy(true);
@@ -1627,7 +1632,7 @@ function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, s
   const remove = async (id: number) => {
     setErr("");
     const res = await onRemoveSite(id);
-    // The refusal explains that pausing keeps the history — worth reading, so it
+    // The refusal explains that pausing keeps the history - worth reading, so it
     // does not auto-dismiss.
     if (res?.error) setErr(res.error);
   };
@@ -1653,7 +1658,7 @@ function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, s
         <Input label="Address" value={nf.address} onChange={(e: any) => setNf((p: any) => ({ ...p, address: e.target.value }))} placeholder="e.g. 123 Main St, Ottawa, ON" />
         <button type="button" onClick={useMyLocation} disabled={locBusy}
           style={{ width: "100%", padding: "11px 14px", marginBottom: 12, borderRadius: 10, border: "2px dashed #dc2626", background: "#fef2f2", color: "#b91c1c", cursor: "pointer", fontSize: 14, fontWeight: 700, opacity: locBusy ? 0.6 : 1 }}>
-          {locBusy ? "Reading GPS..." : "📍 Use My Current Location"}
+          {locBusy ? "Reading GPS..." : "Use My Current Location"}
         </button>
         {locNote && (
           <p style={{ color: locNote.ok ? "#15803d" : "#dc2626", fontSize: 12, margin: "-4px 0 12px", fontWeight: 500 }}>{locNote.text}</p>
@@ -1674,7 +1679,7 @@ function JobSites({ sites, onAddSite, onToggleSite, onRemoveSite, managerAuth, s
           <div key={s.id} style={{ ...S.card, opacity: s.active ? 1 : 0.55, transition: "all 0.2s" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flex: 1 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: s.active ? "#fef2f2" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>📍</div>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: s.active ? "#fef2f2" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}><MapPin size={16} strokeWidth={2} aria-hidden="true" /></div>
                 <div>
                   <p style={{ color: "#1e293b", margin: 0, fontWeight: 700 }}>{s.name}</p>
                   <p style={{ color: "#64748b", margin: "2px 0", fontSize: 13 }}>{s.address}</p>
@@ -1879,9 +1884,9 @@ function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
       clean_blower: !!items.clean_blower,
       broken_notes: broken.trim() || null,
     });
-    if (res?.error) { setSubmitting(false); setErr("Couldn't save — ask your manager to finish setup. (" + res.error + ")"); return; }
+    if (res?.error) { setSubmitting(false); setErr("Couldn't save - ask your manager to finish setup. (" + res.error + ")"); return; }
 
-    // Checklist saved. Now upload any broken/damaged photos to Drive — failures don't block the saved checklist.
+    // Checklist saved. Now upload any broken/damaged photos to Drive - failures don't block the saved checklist.
     if (brokenPhotos.length > 0) {
       try {
         const compressed = await Promise.all(brokenPhotos.map(async (p) => ({ ...p, file: await compressImage(p.file) })));
@@ -1904,7 +1909,7 @@ function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
 
   /**
    * This screen had its own manager gate, comparing against the same bundled
-   * MANAGER_PIN constant but writing to a local `exportAuthed` flag — a second
+   * MANAGER_PIN constant but writing to a local `exportAuthed` flag - a second
    * implementation of manager authority, on an employee-facing tab. It now goes
    * through the same server route as every other manager check.
    */
@@ -1964,7 +1969,7 @@ function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
     ];
 
     const periodLabel = periodIdx === -1 ? "All Time" : periods[periodIdx].label;
-    ws.spliceRows(1, 0, ["Dean Ryans — End of Day Checklist — " + periodLabel]);
+    ws.spliceRows(1, 0, ["Dean Ryans - End of Day Checklist - " + periodLabel]);
     ws.mergeCells("A1:L1");
     const title = ws.getCell("A1");
     title.font = { bold: true, size: 15, color: { argb: "FFFFFFFF" } };
@@ -2033,7 +2038,7 @@ function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 8, borderRadius: 10, cursor: "pointer", textAlign: "left" as const,
           background: on ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (on ? "#bbf7d0" : "#e2e8f0") }}>
         <span style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800,
-          background: on ? "#16a34a" : "#fff", border: "2px solid " + (on ? "#16a34a" : "#cbd5e1"), color: "#fff" }}>{on ? "✓" : ""}</span>
+          background: on ? "#16a34a" : "#fff", border: "2px solid " + (on ? "#16a34a" : "#cbd5e1"), color: "#fff" }}>{on ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : null}</span>
         <span style={{ fontSize: 14, color: "#1e293b", fontWeight: 500 }}>{it.label}</span>
       </button>
     );
@@ -2053,7 +2058,7 @@ function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
     <Modal open={exportOpen} onClose={closeExport}>
       {!exportAuthed ? (
         <div style={{ textAlign: "center" as const }}>
-          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #f59e0b, #d97706)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 22 }}>🔒</div>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #f59e0b, #d97706)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 22 }}><Lock size={16} strokeWidth={2} aria-hidden="true" /></div>
           <h3 style={{ color: "#1e293b", margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>Manager Export</h3>
           <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 18 }}>Enter manager PIN to download checklist history</p>
           <PinPad value={mgrPin} onChange={onMgrPin} />
@@ -2095,13 +2100,13 @@ function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
       <div style={{ maxWidth: 640, margin: "0 auto", width: "100%" }}>
         {header}
         <div style={{ ...S.card, textAlign: "center" as const, padding: 36 }}>
-          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 26, color: "#fff" }}>✓</div>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #16a34a, #15803d)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 26, color: "#fff" }}><Check size={16} strokeWidth={2} aria-hidden="true" /></div>
           <h3 style={{ color: "#1e293b", margin: "0 0 6px", fontSize: 20 }}>Checklist submitted</h3>
           <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 14px" }}>{emp.name} · {vehicle}</p>
           {photoStatus && (
             <div style={{ background: photoStatus.type === 'ok' ? '#f0fdf4' : '#fef2f2', border: '1px solid ' + (photoStatus.type === 'ok' ? '#bbf7d0' : '#fecaca'), borderRadius: 10, padding: '10px 14px', margin: '0 auto 18px', display: 'inline-block', maxWidth: 480 }}>
               <p style={{ margin: 0, color: photoStatus.type === 'ok' ? '#15803d' : '#dc2626', fontSize: 13, fontWeight: 600 }}>
-                {photoStatus.type === 'ok' ? '✓ ' : '⚠ '}{photoStatus.text}
+                {photoStatus.text}
               </p>
             </div>
           )}
@@ -2131,14 +2136,14 @@ function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
       </div>
 
       <div style={{ ...S.card, marginBottom: 12 }}>
-        <h3 style={{ color: "#1e293b", margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>🚚 Truck Inspection</h3>
-        <Select label="Check if truck needs gas — how much is in the truck?" placeholder="Select gas level" value={gas} onChange={(e: any) => setGas(e.target.value)}
+        <h3 style={{ color: "#1e293b", margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}><Truck size={16} strokeWidth={2} aria-hidden="true" /> Truck Inspection</h3>
+        <Select label="Check if truck needs gas - how much is in the truck?" placeholder="Select gas level" value={gas} onChange={(e: any) => setGas(e.target.value)}
           options={GAS_LEVELS.map((g) => ({ value: g, label: g }))} />
         {EOD_TRUCK_ITEMS.map(checkRow)}
       </div>
 
       <div style={{ ...S.card, marginBottom: 12 }}>
-        <h3 style={{ color: "#1e293b", margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>🛠️ Equipment Inspection</h3>
+        <h3 style={{ color: "#1e293b", margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}><Wrench size={16} strokeWidth={2} aria-hidden="true" /> Equipment Inspection</h3>
         {EOD_EQUIP_ITEMS.map(checkRow)}
         <div style={{ marginTop: 6 }}>
           <label style={S.label}>Make note of broken / damaged equipment</label>
@@ -2151,12 +2156,12 @@ function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <button type="button" onClick={() => cameraRef.current?.click()}
               style={{ padding: "14px 10px", borderRadius: 12, border: "2px dashed #d1d5db", background: "#fafbfc", cursor: "pointer", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 5 }}>
-              <span style={{ fontSize: 22 }}>📷</span>
+              <span style={{ fontSize: 22 }}><Camera size={16} strokeWidth={2} aria-hidden="true" /></span>
               <span style={{ color: "#1e293b", fontSize: 13, fontWeight: 600 }}>Take Photo</span>
             </button>
             <button type="button" onClick={() => galleryRef.current?.click()}
               style={{ padding: "14px 10px", borderRadius: 12, border: "2px dashed #d1d5db", background: "#fafbfc", cursor: "pointer", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 5 }}>
-              <span style={{ fontSize: 22 }}>🖼️</span>
+              <span style={{ fontSize: 22 }}><ImageIcon size={16} strokeWidth={2} aria-hidden="true" /></span>
               <span style={{ color: "#1e293b", fontSize: 13, fontWeight: 600 }}>Choose from Gallery</span>
             </button>
             <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { addPhotos(e.target.files); if (cameraRef.current) cameraRef.current.value = ""; }} />
@@ -2225,7 +2230,7 @@ export default function App() {
    * 1. Nothing loads until someone has entered a PIN. Previously every clock
    *    event for every employee was fetched on mount, before any PIN screen,
    *    so all 572 rows sat in the Network tab of anyone who opened the site.
-   * 2. /api/timecards scopes by session — employees receive only their own
+   * 2. /api/timecards scopes by session - employees receive only their own
    *    cards; managers receive everything.
    */
   const loadData = useCallback(async () => {
@@ -2234,7 +2239,7 @@ export default function App() {
       api<{ sites: any[] }>('/api/sites'),
     ]);
 
-    // 401 simply means "no session yet" — the PIN screen is showing. Not an error.
+    // 401 simply means "no session yet" - the PIN screen is showing. Not an error.
     if (cards.ok) {
       setActiveClocks(cards.data.active.map(mapRow));
       setHistory(cards.data.history.map(mapRow));
@@ -2299,7 +2304,7 @@ export default function App() {
    *
    * The old shape was `if (!error) { ...update local state... }` with no else
    * branch, so a failed write left the UI showing the change as if it had
-   * saved. onEditEntry never inspected `error` at all — a failed payroll edit
+   * saved. onEditEntry never inspected `error` at all - a failed payroll edit
    * looked applied until the next refresh.
    */
 
@@ -2319,7 +2324,7 @@ export default function App() {
   };
 
   const onClockOut = async (_employeeName: string) => {
-    // Clock-out never blocks on location — an out-of-fence punch is recorded
+    // Clock-out never blocks on location - an out-of-fence punch is recorded
     // and flagged for the manager, not refused. See api/clock/out/route.ts.
     const fix = await getFix();
 
@@ -2399,15 +2404,16 @@ export default function App() {
   // Glyphs, not words: the label already says "Clock In/Out", so an icon slot
   // reading "Clock" above it just looks like a rendering fault.
   const crewTabs = [
-    { icon: "⏱", label: "Clock In/Out" },
-    { icon: "📷", label: "Photos" },
-    { icon: "✅", label: "End of Day" },
+    { icon: Clock, label: "Clock In/Out" },
+    { icon: Camera, label: "Photos" },
+    { icon: ClipboardCheck, label: "End of Day" },
   ];
   const managerTabs = [
-    { icon: "📊", label: "Active Board" },
-    { icon: "📋", label: "Pay Period" },
-    { icon: "👷", label: "Crew" },
-    { icon: "📍", label: "Job Sites" },
+    { icon: LayoutDashboard, label: "Dashboard" },
+    { icon: Activity, label: "Active Board" },
+    { icon: CalendarRange, label: "Pay Period" },
+    { icon: Users, label: "Crew" },
+    { icon: MapPin, label: "Job Sites" },
   ];
   const tabs = managerMode ? managerTabs : crewTabs;
 
@@ -2421,15 +2427,15 @@ export default function App() {
 
   return (
     <RosterContext.Provider value={roster}>
-    <div style={{ minHeight: "100vh", background: "#f5f6fa", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#fafafa", color: "#18181b", fontFamily: "var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
       {loadError && (
         <div style={{ background: "#fef2f2", borderBottom: "1px solid #fecaca", padding: "10px 24px", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>
           {loadError}
         </div>
       )}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 50, background: "rgba(255,255,255,0.85)", backdropFilter: "saturate(180%) blur(12px)", borderBottom: "1px solid #e4e4e7", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <img src="/logo.png" alt="Dean Ryans Landscape / Property Maintenance" style={{ height: 48, width: "auto", display: "block" }} />
+          <img src="/logo.png" alt="Dean Ryans Landscape / Property Maintenance" style={{ height: 40, width: "auto", display: "block" }} />
           <div>
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#1e293b" }}>Dean Ryans</h1>
             <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", letterSpacing: 1.5, fontWeight: 600 }}>LANDSCAPE / PROPERTY MAINTENANCE</p>
@@ -2438,7 +2444,7 @@ export default function App() {
         {managerMode ? (
           <button onClick={exitManagerMode}
             style={{ background: "transparent", border: "2px solid #dc2626", borderRadius: 10, padding: "9px 16px", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, letterSpacing: 0.5, flexShrink: 0 }}>
-            ← Back
+            Back
           </button>
         ) : (
           <button onClick={enterManagerMode}
@@ -2450,33 +2456,34 @@ export default function App() {
       {/* No tab bar on the manager PIN screen: the tabs it would show are the
           ones the PIN is protecting. */}
       {(!managerMode || managerAuth) && (
-        <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", display: "flex", overflowX: "auto" as const, padding: "0 8px" }}>
+        <nav aria-label="Sections" style={{ background: "#fff", borderBottom: "1px solid #e4e4e7", display: "flex", overflowX: "auto" as const, padding: "0 8px" }}>
           {tabs.map((t, i) => (
             <button key={t.label} onClick={() => setPage(i)} style={{
-              flex: "1 0 auto", padding: "12px 14px", background: "transparent", border: "none",
-              borderBottom: page === i ? "3px solid #dc2626" : "3px solid transparent",
-              color: page === i ? "#1e293b" : "#94a3b8", cursor: "pointer", fontSize: 12, fontWeight: 700,
+              flex: "1 0 auto", minHeight: 56, padding: "10px 14px", background: "transparent", border: "none",
+              borderBottom: page === i ? "2px solid #dc2626" : "2px solid transparent",
+              color: page === i ? "#18181b" : "#71717a", cursor: "pointer", fontSize: 12, fontWeight: 700,
               display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 3,
               whiteSpace: "nowrap" as const, minWidth: 72
             }}>
-              <span style={{ fontSize: 14 }}>{t.icon}</span>
+              <t.icon size={18} strokeWidth={2} aria-hidden="true" />
               <span>{t.label}</span>
             </button>
           ))}
-        </div>
+        </nav>
       )}
-      <div style={{ padding: "24px 24px 40px", width: "100%", boxSizing: "border-box" as const }}>
+      <main style={{ padding: "20px 16px 48px", width: "100%", maxWidth: 1280, margin: "0 auto", boxSizing: "border-box" as const }}>
         {!managerMode && page === 0 && <ClockPage sites={sites} activeClocks={activeClocks} onClockIn={onClockIn} onClockOut={onClockOut} history={history} onAuth={loadData} />}
         {!managerMode && page === 1 && <PhotoPage sites={sites} />}
         {!managerMode && page === 2 && <EODChecklist checklists={eodChecklists} onSubmitChecklist={onSubmitChecklist} onExportAuthed={loadEod} />}
         {managerMode && !managerAuth && (
           <PinEntry title="Manager" subtitle="Enter the manager PIN to continue" type="manager" onVerify={() => setManagerAuth(true)} employees={[]} />
         )}
-        {managerMode && managerAuth && page === 0 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {managerMode && managerAuth && page === 1 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} onCreateEntry={onCreateEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-        {managerMode && managerAuth && page === 2 && <CrewPage managerAuth={managerAuth} setManagerAuth={setManagerAuth} activeClocks={activeClocks} onCrewChanged={refreshRoster} />}
-        {managerMode && managerAuth && page === 3 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
-      </div>
+        {managerMode && managerAuth && page === 0 && <AdminDashboard activeClocks={activeClocks} history={history} sites={sites} />}
+        {managerMode && managerAuth && page === 1 && <ActiveBoard activeClocks={activeClocks} history={history} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {managerMode && managerAuth && page === 2 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} onCreateEntry={onCreateEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {managerMode && managerAuth && page === 3 && <CrewPage managerAuth={managerAuth} setManagerAuth={setManagerAuth} activeClocks={activeClocks} onCrewChanged={refreshRoster} />}
+        {managerMode && managerAuth && page === 4 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+      </main>
     </div>
     </RosterContext.Provider>
   );

@@ -10,7 +10,7 @@
  * would re-open exactly the loophole this closes.
  *
  * Short shifts clamping to 0.00 is likewise intentional. Those are corrected by
- * a manager through the edit flow, face to face with the employee — a
+ * a manager through the edit flow, face to face with the employee - a
  * deliberate human step, not an oversight to automate away.
  *
  * Behaviour is byte-for-byte identical to the original calcHours() in

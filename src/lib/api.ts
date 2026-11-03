@@ -8,14 +8,14 @@
  *
  * ...and the caller then reported success unconditionally, so an employee in a
  * dead zone saw "clocked in at Navaho" while nothing had been written. This
- * returns a discriminated result so a failure cannot be ignored by accident —
+ * returns a discriminated result so a failure cannot be ignored by accident -
  * the success value is only reachable through the `ok` branch.
  */
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 const NETWORK_MESSAGE =
-  'No connection. Check your signal and try again — nothing was saved.';
+  'No connection. Check your signal and try again - nothing was saved.';
 
 export async function api<T = unknown>(
   path: string,
@@ -55,7 +55,7 @@ export async function api<T = unknown>(
  * One-shot GPS read for clock in/out.
  *
  * Resolves to null rather than rejecting when location is unavailable, so the
- * caller decides what an absent fix means — clock-in refuses without one,
+ * caller decides what an absent fix means - clock-in refuses without one,
  * clock-out still succeeds and records "unknown".
  */
 export function getFix(

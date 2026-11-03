@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic';
  * Read time cards, scoped to the caller.
  *
  * Employees get only their own. This is a real change: previously loadData()
- * pulled every clock event for every employee into every browser on mount —
- * before any PIN was entered — so all 572 rows and everyone's hours were
+ * pulled every clock event for every employee into every browser on mount -
+ * before any PIN was entered - so all 572 rows and everyone's hours were
  * visible in the Network tab to anyone who opened the site.
  */
 export async function GET() {
