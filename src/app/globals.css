@@ -128,3 +128,5 @@
     @apply font-sans;
   }
 }
+.pin-del:hover { background: #fee2e2 !important; }
+.pin-del:active { background: #fecaca !important; }

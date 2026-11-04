@@ -267,13 +267,13 @@ function PinPad({ value, onChange }: { value: string; onChange: (v: string) => v
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, maxWidth: 300, margin: "0 auto" }}>
         {keys.map((k, i) => (
-          <button key={i} type="button" onClick={() => press(k)} disabled={!k} aria-label={k === "del" ? "Delete last digit" : k || undefined}
+          <button key={i} type="button" className={k === "del" ? "pin-del" : undefined} onClick={() => press(k)} disabled={!k} aria-label={k === "del" ? "Delete last digit" : k || undefined}
             style={{
               height: 64, width: "100%", padding: 0, boxSizing: "border-box" as const,
               display: "flex", alignItems: "center", justifyContent: "center",
-              borderRadius: 16, border: "1px solid #e4e4e7",
-              background: k ? "#fff" : "transparent",
-              color: k === "del" ? "#52525b" : "#18181b",
+              borderRadius: 16, border: "1px solid " + (k === "del" ? "#fecaca" : "#e4e4e7"),
+              background: k === "del" ? "#fef2f2" : k ? "#fff" : "transparent",
+              color: k === "del" ? "#dc2626" : "#18181b", transition: "background 0.15s",
               fontSize: 24, fontWeight: 700, lineHeight: 1,
               cursor: k ? "pointer" : "default",
               visibility: k ? "visible" : "hidden",
