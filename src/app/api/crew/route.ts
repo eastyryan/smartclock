@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
  * names only, feeds the sign-in dropdown), this returns inactive people too so
  * a manager can bring someone back.
  *
- * PINs go through set_employee_pin in Postgres, the same path the seed used —
+ * PINs go through set_employee_pin in Postgres, the same path the seed used -
  * bcrypt-hashed on the way in, never stored or logged in plain text here.
  */
 export async function GET() {
@@ -30,7 +30,7 @@ export async function GET() {
   return NextResponse.json({ crew: data ?? [] });
 }
 
-/** Add a crew member, or reset an existing member's PIN — set_employee_pin
+/** Add a crew member, or reset an existing member's PIN - set_employee_pin
  *  upserts by name and reactivates, so both are the same operation. */
 export async function POST(request: Request) {
   const manager = await readManagerSession();
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   return NextResponse.json({ ok: true, name });
 }
 
-/** Deactivate or reactivate. Never a DELETE — clock_events stores the name as
+/** Deactivate or reactivate. Never a DELETE - clock_events stores the name as
  *  text, so the row has to stay for old time cards to keep balancing. */
 export async function PATCH(request: Request) {
   const manager = await readManagerSession();

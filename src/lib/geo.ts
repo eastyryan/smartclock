@@ -13,7 +13,7 @@ export type Site = {
   lat: number;
   lng: number;
   radius?: number | null;
-  /** Optional identity — filled when evaluating against the full site list. */
+  /** Optional identity - filled when evaluating against the full site list. */
   id?: number | null;
   name?: string | null;
 };
@@ -44,7 +44,7 @@ export type FenceResult = {
  * Evaluate a GPS fix against a job site.
  *
  * The accuracy handling here is the point. A phone under tree cover can report
- * a position 400m off with ±300m accuracy — that reading is consistent with
+ * a position 400m off with ±300m accuracy - that reading is consistent with
  * standing on site, so flagging it as "clocked out from home" would be wrong.
  * A shift is only marked outside the fence when the *nearest* point the
  * employee could plausibly be is still beyond the radius.
@@ -88,7 +88,7 @@ export type AnyFenceResult = FenceResult & {
  * Clock-out geofence across every active job site.
  *
  * Crews often finish the day at a different site than they started. Flagging
- * them as "away from the job site" against only the clock-in site is wrong —
+ * them as "away from the job site" against only the clock-in site is wrong -
  * if they are inside any known site's radius, the punch is on-site.
  *
  * Verdict:
@@ -140,7 +140,7 @@ export function evaluateAnyFence(fix: Fix | null | undefined, sites: Site[]): An
   );
 
   // No site accepted them. Flag only when we are confident they are outside at
-  // least one site we could measure — vague GPS stays null so digests never
+  // least one site we could measure - vague GPS stays null so digests never
   // treat a bad reading as evidence.
   const anyOutside = scored.some((s) => s.fence.withinFence === false);
 

@@ -10,7 +10,7 @@ import { formatDistance } from './geo';
  * bold subheading. Mail clients that refuse HTML still get a readable message.
  *
  * Kept separate from the cron route so content can be generated and inspected
- * without sending — see /api/cron/digest?dryRun=1.
+ * without sending - see /api/cron/digest?dryRun=1.
  */
 
 /** Crews are expected on site at 8:00 AM; anything later is a late start. */
@@ -35,7 +35,7 @@ export type Digest = { subject: string; text: string; html: string; sms: string 
 /**
  * Roughly two GSM-7 segments (153 characters each).
  *
- * The SMS is a nudge, not a record — the full roster is in the email that goes
+ * The SMS is a nudge, not a record - the full roster is in the email that goes
  * out alongside it. Capping here keeps a busy day from quietly turning one text
  * into six.
  */
@@ -65,7 +65,7 @@ function renderSms(headline: string, items: string[]): string {
   return out.join('\n');
 }
 
-/** "Late: Chris 8:24 AM, Dave 8:40 AM" — one line, or nothing. */
+/** "Late: Chris 8:24 AM, Dave 8:40 AM" - one line, or nothing. */
 function lateLine(late: Row[]): string[] {
   if (!late.length) return [];
   return [`Late: ${late.map((r) => `${r.employee_name} ${formatTime(r.clock_in)}`).join(', ')}`];
@@ -115,7 +115,7 @@ function sitesPart(r: Row): string {
     return `${clockInSite} → out location unknown`;
   }
 
-  // Same site in and out — keep it short.
+  // Same site in and out - keep it short.
   if (outSite === clockInSite) {
     return r.clock_out_distance_m != null
       ? `${clockInSite} (out ${dist})`
@@ -133,7 +133,7 @@ function line(r: Row): string {
   const times = r.clock_out
     ? `${formatTime(r.clock_in)} to ${formatTime(r.clock_out)}`
     : `in at ${formatTime(r.clock_in)}, still on`;
-  return `${r.employee_name} — ${times} — ${sitesPart(r)}`;
+  return `${r.employee_name} - ${times} - ${sitesPart(r)}`;
 }
 
 function render(parts: { heading: string; rows: Row[]; flags: string[]; late: Row[] }): { text: string; html: string } {
@@ -146,7 +146,7 @@ function render(parts: { heading: string; rows: Row[]; flags: string[]; late: Ro
     ...(flags.length ? ['', `Flags (${flags.length})`, ...flags.map((f) => `  ${f}`)] : []),
     ...(late.length
       ? ['', `Late starts, after 8:00 AM (${late.length})`,
-         ...late.map((r) => `  ${r.employee_name} — ${formatTime(r.clock_in)} — ${r.site_name ?? 'unknown site'}`)]
+         ...late.map((r) => `  ${r.employee_name} - ${formatTime(r.clock_in)} - ${r.site_name ?? 'unknown site'}`)]
       : []),
   ].join('\n');
 
@@ -158,19 +158,19 @@ ${rows.length ? rows.map((r) => esc(line(r))).join('<br>') : 'No shifts recorded
 ${flags.length ? `<p style="margin:0 0 10px"><strong>Flags (${flags.length})</strong></p>
 <p style="margin:0 0 18px;color:#b91c1c">${flags.map(esc).join('<br>')}</p>` : ''}
 ${late.length ? `<p style="margin:0 0 10px"><strong>Late starts, after 8:00 AM (${late.length})</strong></p>
-<p style="margin:0 0 18px">${late.map((r) => esc(`${r.employee_name} — ${formatTime(r.clock_in)} — ${r.site_name ?? 'unknown site'}`)).join('<br>')}</p>` : ''}
+<p style="margin:0 0 18px">${late.map((r) => esc(`${r.employee_name} - ${formatTime(r.clock_in)} - ${r.site_name ?? 'unknown site'}`)).join('<br>')}</p>` : ''}
 </div>`;
 
   return { text, html };
 }
 
-/** 9:30 AM — who is on the clock right now. */
+/** 9:30 AM - who is on the clock right now. */
 export async function buildMorningDigest(now = new Date()): Promise<Digest> {
   const [rows, open] = await Promise.all([todaysRows(now), openShifts()]);
 
   const stale = open.filter((r) => hoursBetween(r.clock_in, now) > 14);
   const flags = stale.map(
-    (r) => `${r.employee_name} — clocked in ${hoursBetween(r.clock_in, now)}h ago, likely missed a clock-out`
+    (r) => `${r.employee_name} - clocked in ${hoursBetween(r.clock_in, now)}h ago, likely missed a clock-out`
   );
 
   const late = rows.filter((r) => isLate(r.clock_in));
@@ -185,7 +185,7 @@ export async function buildMorningDigest(now = new Date()): Promise<Digest> {
   return { subject: `DNRs App - ${stamp(now)}`, text, html, sms };
 }
 
-/** 6:00 PM — the day's summary, with flags a manager may need to act on. */
+/** 6:00 PM - the day's summary, with flags a manager may need to act on. */
 export async function buildEveningDigest(now = new Date()): Promise<Digest> {
   const [rows, open] = await Promise.all([todaysRows(now), openShifts()]);
   const closed = rows.filter((r) => r.clock_out);
@@ -201,13 +201,13 @@ export async function buildEveningDigest(now = new Date()): Promise<Digest> {
     const dist = formatDistance(r.clock_out_distance_m);
     const nearest = r.clock_out_site_name ?? 'nearest job site';
     flags.push(
-      `${r.employee_name} — clocked out ${dist} from ${nearest} at ${formatTime(r.clock_out!)} (not at any job site)`
+      `${r.employee_name} - clocked out ${dist} from ${nearest} at ${formatTime(r.clock_out!)} (not at any job site)`
     );
     smsFlags.push(`! ${r.employee_name} out ${dist} from ${nearest} ${formatTime(r.clock_out!)}`);
   }
   for (const r of open) {
     const h = hoursBetween(r.clock_in, now);
-    flags.push(`${r.employee_name} — still clocked in since ${formatTime(r.clock_in)} (${h}h)`);
+    flags.push(`${r.employee_name} - still clocked in since ${formatTime(r.clock_in)} (${h}h)`);
     smsFlags.push(`! ${r.employee_name} still in since ${formatTime(r.clock_in)} (${h}h)`);
   }
 

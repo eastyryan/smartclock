@@ -6,7 +6,7 @@
  *   new Date().toISOString().split("T")[0]
  * which is a UTC date, so in Ottawa any shift starting after 8:00 PM local is
  * counted on the following day. Pay period boundaries are built with
- * new Date(y, m, 1) — the browser's zone — then compared against UTC
+ * new Date(y, m, 1) - the browser's zone - then compared against UTC
  * timestamps, so the answer depends on where the manager happens to be.
  *
  * The digests run on Vercel, where the server clock is UTC, so doing this

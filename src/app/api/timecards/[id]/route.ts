@@ -8,7 +8,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * Approve, reject, or edit a time card. Manager only.
  *
  * Every one of these used to be a direct anon-key write from the browser with
- * no authorization at all — a probe against production confirmed an anonymous
+ * no authorization at all - a probe against production confirmed an anonymous
  * PATCH setting status='approved' was accepted.
  *
  * Each action also writes a clock_event_audit row capturing before/after.

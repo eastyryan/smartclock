@@ -26,13 +26,13 @@ import { calcHours } from '@/lib/hours';
  *
  * On honesty about tracking: this cannot and does not run without the employee
  * knowing. navigator.geolocation requires an explicit permission grant and
- * browsers display a live location indicator while it is active — there is no
+ * browsers display a live location indicator while it is active - there is no
  * API that reads position silently. Employees already grant this at clock-in
  * and already see "Location verified". Anything covert would require a native
  * app with "Always Allow", which iOS re-prompts users about by design.
  *
  * Ontario's ESA requires employers with 25+ employees to have a written
- * electronic monitoring policy. The roster is 23 employees plus 2 managers —
+ * electronic monitoring policy. The roster is 23 employees plus 2 managers -
  * close enough to the threshold to be worth checking before this ships.
  */
 export async function POST(request: Request) {

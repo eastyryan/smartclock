@@ -2,7 +2,7 @@ import 'server-only';
 import { supabaseAdmin } from './supabase-admin';
 
 /**
- * PIN abuse protection — WITHOUT lockouts.
+ * PIN abuse protection - WITHOUT lockouts.
  *
  * There is deliberately no lockout. An earlier version locked an employee out
  * for 15 minutes after 5 wrong attempts, which is the wrong trade for this
@@ -12,7 +12,7 @@ import { supabaseAdmin } from './supabase-admin';
  * likely problem than a brute-force attempt.
  *
  * Instead, wrong attempts get progressively slower. A CORRECT PIN is never
- * delayed, so a real employee never waits — only someone guessing does.
+ * delayed, so a real employee never waits - only someone guessing does.
  *
  * That still makes scripted brute force impractical. A 4-digit PIN is 10,000
  * combinations; at the capped 2s penalty that is over five hours of sustained

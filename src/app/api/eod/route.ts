@@ -13,7 +13,7 @@ const BOOL_FIELDS = [
   'clean_blower',
 ] as const;
 
-/** Checklist history. Manager only — this feeds the Excel export. */
+/** Checklist history. Manager only - this feeds the Excel export. */
 export async function GET() {
   const manager = await readManagerSession();
   if (!manager) return NextResponse.json({ error: 'Manager access required.' }, { status: 403 });

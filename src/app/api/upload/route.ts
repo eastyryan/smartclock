@@ -13,7 +13,7 @@ const MAX_BYTES_PER_FILE = 15 * 1024 * 1024;
 /**
  * Drive folder names are interpolated into a `q=` query string, so they are
  * sanitised to a known-safe charset and then escaped. Previously only single
- * quotes were escaped, leaving backslashes unhandled — enough to break out of
+ * quotes were escaped, leaving backslashes unhandled - enough to break out of
  * the quoted literal and alter the query.
  */
 function safeFolderName(raw: string): string {
