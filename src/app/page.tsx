@@ -267,17 +267,19 @@ function PinPad({ value, onChange }: { value: string; onChange: (v: string) => v
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, maxWidth: 300, margin: "0 auto" }}>
         {keys.map((k, i) => (
-          <button key={i} onClick={() => press(k)} disabled={!k}
+          <button key={i} type="button" onClick={() => press(k)} disabled={!k} aria-label={k === "del" ? "Delete last digit" : k || undefined}
             style={{
-              height: 64, borderRadius: 16, border: "1px solid #e4e4e7",
-              background: k === "del" ? "#fef2f2" : k ? "#fff" : "transparent",
-              color: k === "del" ? "#dc2626" : "#1e293b",
-              fontSize: k === "del" ? 16 : 24, fontWeight: 700,
+              height: 64, width: "100%", padding: 0, boxSizing: "border-box" as const,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: 16, border: "1px solid #e4e4e7",
+              background: k ? "#fff" : "transparent",
+              color: k === "del" ? "#52525b" : "#18181b",
+              fontSize: 24, fontWeight: 700, lineHeight: 1,
               cursor: k ? "pointer" : "default",
               visibility: k ? "visible" : "hidden",
               userSelect: "none"
             }}>
-            {k === "del" ? <Delete size={22} strokeWidth={2} aria-hidden="true" /> : k}
+            {k === "del" ? <Delete size={24} strokeWidth={2} aria-hidden="true" style={{ display: "block" }} /> : k}
           </button>
         ))}
       </div>
@@ -1827,7 +1829,7 @@ function CrewPage({ managerAuth, setManagerAuth, activeClocks, onCrewChanged }: 
   );
 }
 
-function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
+function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed, showExport = false }: any) {
   const { employees: rosterNames, managers: managerNames } = useRoster();
   const [emp, setEmp] = useState<any>(null);
   const [vehicle, setVehicle] = useState("");
@@ -2050,7 +2052,7 @@ function EODChecklist({ checklists, onSubmitChecklist, onExportAuthed }: any) {
         <h2 style={{ color: "#1e293b", margin: 0, fontSize: 24, fontWeight: 800 }}>End of Day Checklist</h2>
         <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: 14 }}>Sign in and confirm each vehicle is cleaned and inspected.</p>
       </div>
-      <Btn variant="outline" onClick={() => setExportOpen(true)} style={{ padding: "8px 16px", fontSize: 13, flexShrink: 0 }}>Export to Excel</Btn>
+      {showExport && <Btn variant="outline" onClick={() => setExportOpen(true)} style={{ padding: "8px 16px", fontSize: 13, flexShrink: 0 }}>Export to Excel</Btn>}
     </div>
   );
 
@@ -2414,6 +2416,7 @@ export default function App() {
     { icon: CalendarRange, label: "Pay Period" },
     { icon: Users, label: "Crew" },
     { icon: MapPin, label: "Job Sites" },
+    { icon: ClipboardCheck, label: "End of Day" },
   ];
   const tabs = managerMode ? managerTabs : crewTabs;
 
@@ -2483,6 +2486,7 @@ export default function App() {
         {managerMode && managerAuth && page === 2 && <PayPeriod history={history} sites={sites} onApprove={onApprove} onReject={onReject} onEditEntry={onEditEntry} onCreateEntry={onCreateEntry} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
         {managerMode && managerAuth && page === 3 && <CrewPage managerAuth={managerAuth} setManagerAuth={setManagerAuth} activeClocks={activeClocks} onCrewChanged={refreshRoster} />}
         {managerMode && managerAuth && page === 4 && <JobSites sites={sites} onAddSite={onAddSite} onToggleSite={onToggleSite} onRemoveSite={onRemoveSite} managerAuth={managerAuth} setManagerAuth={setManagerAuth} />}
+        {managerMode && managerAuth && page === 5 && <EODChecklist checklists={eodChecklists} onSubmitChecklist={onSubmitChecklist} onExportAuthed={loadEod} showExport />}
       </main>
     </div>
     </RosterContext.Provider>

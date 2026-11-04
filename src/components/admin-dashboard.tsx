@@ -1,16 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  AlertCircle,
+  CalendarDays,
+  Clock,
+  UserCheck,
+  Users,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -137,6 +144,49 @@ function dayLabel(date: Date): string {
 
 function dayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function StatCard({
+  label,
+  value,
+  helper,
+  icon,
+  tone,
+}: {
+  label: string;
+  value: ReactNode;
+  helper: string;
+  icon: ReactNode;
+  tone: string;
+}) {
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">
+            {value}
+          </p>
+        </div>
+        <span
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${tone}`}
+          aria-hidden="true"
+        >
+          {icon}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+    </Card>
+  );
 }
 
 export default function AdminDashboard({
@@ -375,94 +425,126 @@ export default function AdminDashboard({
       : "...";
 
   return (
-    <div className="space-y-4 text-sm text-zinc-900">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardDescription>Signed in now</CardDescription>
-            <CardTitle className="text-2xl tabular-nums">
+    <div className="space-y-4 text-sm text-foreground">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+        <StatCard
+          label="Signed in now"
+          value={
+            <span
+              className={
+                activeClocks.length > 0 ? "text-emerald-600" : undefined
+              }
+            >
               {activeClocks.length}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardDescription>Hours today</CardDescription>
-            <CardTitle className="text-2xl tabular-nums">
-              {formatHours(metrics.todayHours)}h
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardDescription>Hours this week</CardDescription>
-            <CardTitle className="text-2xl tabular-nums">
-              {formatHours(metrics.weekHours)}h
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardDescription>Pending approvals</CardDescription>
-            <CardTitle
-              className={`text-2xl tabular-nums ${
-                metrics.pendingApprovals > 0 ? "text-red-600" : ""
-              }`}
+            </span>
+          }
+          helper="Across all job sites"
+          tone="bg-emerald-50 text-emerald-600"
+          icon={<UserCheck className="size-4" />}
+        />
+        <StatCard
+          label="Hours today"
+          value={`${formatHours(metrics.todayHours)}h`}
+          helper="Total logged today"
+          tone="bg-sky-50 text-sky-600"
+          icon={<Clock className="size-4" />}
+        />
+        <StatCard
+          label="Hours this week"
+          value={`${formatHours(metrics.weekHours)}h`}
+          helper="Monday through today"
+          tone="bg-indigo-50 text-indigo-600"
+          icon={<CalendarDays className="size-4" />}
+        />
+        <StatCard
+          label="Pending approvals"
+          value={
+            <span
+              className={
+                metrics.pendingApprovals > 0 ? "text-amber-600" : undefined
+              }
             >
               {metrics.pendingApprovals}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardDescription>Active crew</CardDescription>
-            <CardTitle className="text-lg tabular-nums">{crewValue}</CardTitle>
-          </CardHeader>
-        </Card>
+            </span>
+          }
+          helper={
+            metrics.pendingApprovals > 0 ? "Awaiting review" : "All caught up"
+          }
+          tone="bg-amber-50 text-amber-600"
+          icon={<AlertCircle className="size-4" />}
+        />
+        <StatCard
+          label="Active crew"
+          value={
+            crewNames
+              ? crewNames.active.length
+              : crewError
+                ? "n/a"
+                : "--"
+          }
+          helper={
+            crewError
+              ? "Crew list unavailable"
+              : crewNames
+                ? crewValue
+                : "Loading crew"
+          }
+          tone="bg-red-50 text-red-600"
+          icon={<Users className="size-4" />}
+        />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+      <div className="grid gap-4 items-stretch lg:grid-cols-2">
+        <Card className="h-full">
           <CardHeader>
-            <CardTitle>Currently signed in</CardTitle>
-            <CardDescription>
-              {activeClocks.length === 0
-                ? "Nobody is signed in right now."
-                : `${activeClocks.length} on the clock`}
-            </CardDescription>
+            <CardTitle className="text-base font-semibold">
+              Currently signed in
+            </CardTitle>
+            <CardDescription>Live view of open shifts</CardDescription>
+            {activeClocks.length > 0 && (
+              <CardAction>
+                <Badge variant="secondary" className="tabular-nums">
+                  {activeClocks.length}
+                </Badge>
+              </CardAction>
+            )}
           </CardHeader>
           <CardContent>
             {activeClocks.length === 0 ? (
-              <p className="py-4 text-zinc-500">
-                Nobody is signed in right now.
-              </p>
+              <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                <UserCheck
+                  className="size-8 text-muted-foreground/60"
+                  aria-hidden="true"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Nobody is signed in right now.
+                </p>
+              </div>
             ) : (
-              <ul className="divide-y divide-zinc-100">
+              <ul className="divide-y divide-border">
                 {activeClocks.map((entry) => (
                   <li
                     key={entry.id}
-                    className="flex items-start gap-2.5 py-2.5 first:pt-0 last:pb-0"
+                    className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
                   >
                     <span
-                      className="mt-1.5 size-2 shrink-0 rounded-full bg-emerald-500"
+                      className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-semibold text-emerald-700"
                       aria-hidden="true"
-                    />
+                    >
+                      {initials(entry.employee)}
+                    </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-zinc-900">
+                      <p className="truncate font-medium text-foreground">
                         {entry.employee}
                       </p>
-                      <p className="truncate text-xs text-zinc-500">
+                      <p className="truncate text-xs text-muted-foreground">
                         {entry.site || "Unassigned"} since{" "}
                         {formatClockTime(entry.clockIn)}
                       </p>
                     </div>
-                    <span className="shrink-0 tabular-nums text-zinc-600">
+                    <Badge className="shrink-0 border-emerald-200 bg-emerald-50 tabular-nums text-emerald-700">
                       {formatElapsed(now - toTime(entry.clockIn))}
-                    </span>
+                    </Badge>
                   </li>
                 ))}
               </ul>
@@ -470,38 +552,64 @@ export default function AdminDashboard({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="h-full">
           <CardHeader>
-            <CardTitle>Weekly hours by employee</CardTitle>
-            <CardDescription>Monday through today, active time included</CardDescription>
+            <CardTitle className="text-base font-semibold">
+              Weekly hours by employee
+            </CardTitle>
+            <CardDescription>
+              Monday through today, active time included
+            </CardDescription>
+            {metrics.weeklyByEmployee.length > 0 && (
+              <CardAction>
+                <Badge variant="secondary" className="tabular-nums">
+                  {metrics.weeklyByEmployee.length}
+                </Badge>
+              </CardAction>
+            )}
           </CardHeader>
           <CardContent>
             {metrics.weeklyByEmployee.length === 0 ? (
-              <p className="py-4 text-zinc-500">No hours logged this week.</p>
+              <p className="py-4 text-muted-foreground">
+                No hours logged this week.
+              </p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {metrics.weeklyByEmployee.map((row) => {
                   const width =
                     weeklyMax > 0 ? (row.hours / weeklyMax) * 100 : 0;
                   const over = row.hours > 40;
                   return (
                     <div key={row.name}>
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="truncate font-medium text-zinc-700">
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span
+                          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600"
+                          aria-hidden="true"
+                        >
+                          {initials(row.name)}
+                        </span>
+                        <span className="truncate font-medium text-foreground">
                           {row.name}
                         </span>
+                        {over && (
+                          <Badge className="border-amber-200 bg-amber-50 text-amber-700">
+                            Over 40h
+                          </Badge>
+                        )}
                         <span
-                          className={`shrink-0 tabular-nums ${
-                            over ? "font-medium text-amber-600" : "text-zinc-500"
+                          className={`ml-auto shrink-0 tabular-nums ${
+                            over
+                              ? "font-medium text-amber-600"
+                              : "text-muted-foreground"
                           }`}
                         >
                           {formatHours(row.hours)}h
                         </span>
                       </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100">
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                         <div
                           className={`h-full rounded-full ${
-                            over ? "bg-amber-500" : "bg-zinc-800"
+                            over ? "bg-amber-500" : "bg-sky-500"
                           }`}
                           style={{ width: `${width}%` }}
                         />
@@ -515,35 +623,45 @@ export default function AdminDashboard({
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+      <div className="grid gap-4 items-stretch lg:grid-cols-2">
+        <Card className="h-full">
           <CardHeader>
-            <CardTitle>Last 7 days</CardTitle>
+            <CardTitle className="text-base font-semibold">Last 7 days</CardTitle>
             <CardDescription>Total hours per day</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex h-40 items-end gap-2">
-              {metrics.last7.map((day) => {
+              {metrics.last7.map((day, index) => {
                 const height =
                   last7Max > 0 ? (day.hours / last7Max) * 100 : 0;
+                const isToday = index === metrics.last7.length - 1;
                 return (
                   <div
                     key={day.key}
-                    className="flex h-full flex-1 flex-col items-center justify-end gap-1"
+                    className="flex h-full flex-1 flex-col items-center justify-end gap-1.5"
                   >
-                    <span className="text-[10px] tabular-nums text-zinc-500">
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
                       {formatHours(day.hours)}
                     </span>
                     <div className="flex h-28 w-full items-end">
-                      <div
-                        className="w-full rounded-t bg-zinc-800"
-                        style={{
-                          height: `${height}%`,
-                          minHeight: day.hours > 0 ? 2 : 0,
-                        }}
-                      />
+                      {day.hours > 0 ? (
+                        <div
+                          className={`w-full rounded-t ${
+                            isToday ? "bg-red-600" : "bg-red-600/80"
+                          }`}
+                          style={{ height: `${Math.max(height, 3)}%` }}
+                        />
+                      ) : (
+                        <div className="h-1 w-full rounded bg-muted" />
+                      )}
                     </div>
-                    <span className="text-[10px] font-medium text-zinc-500">
+                    <span
+                      className={`text-[10px] ${
+                        isToday
+                          ? "font-semibold text-red-600"
+                          : "font-medium text-muted-foreground"
+                      }`}
+                    >
                       {day.label}
                     </span>
                   </div>
@@ -553,16 +671,27 @@ export default function AdminDashboard({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="h-full">
           <CardHeader>
-            <CardTitle>Job site breakdown</CardTitle>
+            <CardTitle className="text-base font-semibold">
+              Job site breakdown
+            </CardTitle>
             <CardDescription>
               {activeSiteCount} active / {inactiveSiteCount} inactive sites
             </CardDescription>
+            {metrics.siteBreakdown.length > 0 && (
+              <CardAction>
+                <Badge variant="secondary" className="tabular-nums">
+                  {metrics.siteBreakdown.length}
+                </Badge>
+              </CardAction>
+            )}
           </CardHeader>
           <CardContent>
             {metrics.siteBreakdown.length === 0 ? (
-              <p className="py-4 text-zinc-500">No site hours logged this week.</p>
+              <p className="py-4 text-muted-foreground">
+                No site hours logged this week.
+              </p>
             ) : (
               <Table>
                 <TableHeader>
@@ -587,11 +716,11 @@ export default function AdminDashboard({
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {row.onSite > 0 ? (
-                          <Badge className="bg-emerald-50 text-emerald-700">
+                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
                             {row.onSite}
                           </Badge>
                         ) : (
-                          <span className="text-zinc-400">0</span>
+                          <span className="text-muted-foreground">0</span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -603,15 +732,24 @@ export default function AdminDashboard({
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+      <div className="grid gap-4 items-stretch lg:grid-cols-2">
+        <Card className="h-full">
           <CardHeader>
-            <CardTitle>Recent activity</CardTitle>
+            <CardTitle className="text-base font-semibold">
+              Recent activity
+            </CardTitle>
             <CardDescription>Clock in and clock out events</CardDescription>
+            {metrics.activity.length > 0 && (
+              <CardAction>
+                <Badge variant="secondary" className="tabular-nums">
+                  {metrics.activity.length}
+                </Badge>
+              </CardAction>
+            )}
           </CardHeader>
           <CardContent>
             {metrics.activity.length === 0 ? (
-              <p className="py-4 text-zinc-500">No recent activity.</p>
+              <p className="py-4 text-muted-foreground">No recent activity.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -629,8 +767,8 @@ export default function AdminDashboard({
                         <Badge
                           className={
                             event.kind === "in"
-                              ? "bg-zinc-900 text-white"
-                              : "border-zinc-200 bg-white text-zinc-600"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-slate-200 bg-slate-50 text-slate-600"
                           }
                         >
                           {event.kind === "in" ? "Signed in" : "Signed out"}
@@ -639,10 +777,10 @@ export default function AdminDashboard({
                       <TableCell className="max-w-[9rem] truncate font-medium">
                         {event.employee}
                       </TableCell>
-                      <TableCell className="max-w-[9rem] truncate text-zinc-500">
+                      <TableCell className="max-w-[9rem] truncate text-muted-foreground">
                         {event.site}
                       </TableCell>
-                      <TableCell className="text-right text-zinc-500">
+                      <TableCell className="text-right text-muted-foreground">
                         {formatRelative(event.at, now)}
                       </TableCell>
                     </TableRow>
@@ -653,9 +791,9 @@ export default function AdminDashboard({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="h-full">
           <CardHeader>
-            <CardTitle>Crew</CardTitle>
+            <CardTitle className="text-base font-semibold">Crew</CardTitle>
             <CardDescription>
               {crewError
                 ? "Crew list unavailable."
@@ -666,52 +804,68 @@ export default function AdminDashboard({
           </CardHeader>
           <CardContent>
             {crewNames ? (
-              <div className="flex flex-col gap-4 sm:flex-row">
-                <div className="flex-1">
-                  <p className="mb-2 text-xs font-medium text-zinc-500">
-                    Active
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {crewNames.active.length === 0 ? (
-                      <span className="text-zinc-400">None</span>
-                    ) : (
-                      crewNames.active.map((name) => (
-                        <Badge
-                          key={name}
-                          className="bg-zinc-100 text-zinc-700"
-                        >
-                          {name}
-                        </Badge>
-                      ))
-                    )}
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Active
+                    </p>
+                    <Badge variant="secondary" className="tabular-nums">
+                      {crewNames.active.length}
+                    </Badge>
                   </div>
+                  {crewNames.active.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">None</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {crewNames.active.map((name) => (
+                        <li key={name} className="flex items-center gap-2">
+                          <span
+                            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-[10px] font-semibold text-red-700"
+                            aria-hidden="true"
+                          >
+                            {initials(name)}
+                          </span>
+                          <span className="truncate font-medium text-foreground">
+                            {name}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                <Separator
-                  orientation="vertical"
-                  className="hidden sm:block"
-                />
-                <div className="flex-1">
-                  <p className="mb-2 text-xs font-medium text-zinc-500">
-                    Inactive
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {crewNames.inactive.length === 0 ? (
-                      <span className="text-zinc-400">None</span>
-                    ) : (
-                      crewNames.inactive.map((name) => (
-                        <Badge
-                          key={name}
-                          className="border-zinc-200 bg-white text-zinc-500"
-                        >
-                          {name}
-                        </Badge>
-                      ))
-                    )}
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Inactive
+                    </p>
+                    <Badge variant="secondary" className="tabular-nums">
+                      {crewNames.inactive.length}
+                    </Badge>
                   </div>
+                  {crewNames.inactive.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">None</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {crewNames.inactive.map((name) => (
+                        <li key={name} className="flex items-center gap-2">
+                          <span
+                            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground"
+                            aria-hidden="true"
+                          >
+                            {initials(name)}
+                          </span>
+                          <span className="truncate font-medium text-muted-foreground">
+                            {name}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             ) : (
-              <p className="py-4 text-zinc-500">
+              <p className="py-4 text-muted-foreground">
                 {crewError ? "Crew list unavailable." : "Loading crew."}
               </p>
             )}
